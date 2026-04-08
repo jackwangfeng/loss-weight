@@ -1,0 +1,30 @@
+# Sample configuration file
+# Copy this to config.yaml and modify as needed
+
+# Basic settings
+project_name: "Loss Weight AI"
+version: "1.0.0"
+api_prefix: "/v1"
+port: 8000
+debug: true
+
+# Database
+database_url: "postgresql://postgres:postgres@localhost:5432/lossweight"
+
+# Redis
+redis_url: "redis://localhost:6379"
+
+# Security
+secret_key: "your-secret-key-change-in-production"
+jwt_expire_days: 7
+
+# AI Services
+openai_api_key: ""
+baidu_cv_api_key: ""
+
+# Chroma (Vector Database)
+chroma_url: "http://localhost:8001"
+
+# File Storage
+oss_bucket: "loss-weight"
+oss_endpoint: "oss-cn-hangzhou.aliyuncs.com"

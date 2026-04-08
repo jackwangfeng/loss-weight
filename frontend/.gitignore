@@ -1,0 +1,55 @@
+# Flutter/Dart
+.dart_tool/
+.packages
+build/
+pubspec.lock
+
+# Android
+.gradle/
+local.properties
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/gradle.xml
+.idea/assetWizardSettings.xml
+.idea/dictionaries
+.idea/libraries
+.idea/caches
+*.iml
+
+# iOS
+**/DerivedData/
+**/Pods/
+**.pbxuser
+!default.pbxuser
+**.mode1v3
+!default.mode1v3
+**.mode2v3
+!default.mode2v3
+**.perspectivev3
+!default.perspectivev3
+xcuserdata
+**/.generated/
+Flutter/ephemeral/
+Flutter/AppFrameworkInfo.plist
+Flutter/Generated.xcconfig
+Flutter/Debug.xcconfig
+Flutter/Release.xcconfig
+Flutter/flutter_export_environment.sh
+
+# macOS
+**/Desktop.ini
+
+# Coverage
+coverage/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store

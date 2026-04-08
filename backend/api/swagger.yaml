@@ -1,0 +1,1176 @@
+openapi: 3.0.3
+info:
+  title: 减肥 AI 助理 - API 文档
+  description: |
+    一款让用户「轻松减肥、量化减肥」的 AI 助理应用
+    
+    ## 核心功能
+    - 📸 拍照识别食物热量
+    - 🤖 AI 鼓励助手
+    - 📊 热量预算与追踪
+    - ⚖️ 体重记录与分析
+    
+    ## 认证方式
+    使用 JWT Bearer Token 进行认证
+    
+    在创建用户档案后，系统会返回 token，后续请求需在 Header 中添加：
+    ```
+    Authorization: Bearer {token}
+    ```
+  version: 1.0.0
+  contact:
+    name: Loss Weight AI Team
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8000/v1
+    description: 开发环境
+  - url: https://api.yourapp.com/v1
+    description: 生产环境
+
+tags:
+  - name: users
+    description: 用户档案管理
+  - name: food
+    description: 饮食记录与识别
+  - name: weight
+    description: 体重记录与追踪
+  - name: ai
+    description: AI 助手与鼓励
+
+paths:
+  /health:
+    get:
+      summary: 健康检查
+      description: 检查服务是否正常运行
+      tags:
+        - health
+      responses:
+        '200':
+          description: 服务健康
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /users/profile:
+    post:
+      summary: 创建用户档案
+      description: 新用户首次使用时创建减脂档案
+      tags:
+        - users
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserProfileCreate'
+            examples:
+              example1:
+                summary: 男性用户示例
+                value:
+                  nickname: "小明"
+                  gender: "male"
+                  age: 28
+                  height: 175
+                  current_weight: 75.0
+                  target_weight: 65.0
+                  target_date: "2026-08-01"
+              example2:
+                summary: 女性用户示例
+                value:
+                  nickname: "小红"
+                  gender: "female"
+                  age: 25
+                  height: 165
+                  current_weight: 60.0
+                  target_weight: 52.0
+      responses:
+        '200':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileResponse'
+              examples:
+                example1:
+                  value:
+                    code: 200
+                    message: "success"
+                    data:
+                      user_id: 1001
+                      nickname: "小明"
+                      gender: "male"
+                      bmi: 24.5
+                      bmr: 1650.5
+                      tdee: 1980.6
+                      daily_budget: 1480
+                      estimated_weeks: 12
+                      token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: 获取用户档案
+      description: 获取当前用户的档案信息
+      tags:
+        - users
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileResponse'
+        '401':
+          description: 未认证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 用户不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: 更新用户档案
+      description: 更新用户档案信息（部分字段）
+      tags:
+        - users
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserProfileUpdate'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileResponse'
+        '400':
+          description: 请求参数错误
+        '401':
+          description: 未认证
+
+  /food/recognize:
+    post:
+      summary: 拍照识别食物
+      description: |
+        上传食物照片，AI 自动识别食物种类并估算热量
+        
+        **支持格式：** JPG, PNG, WEBP
+        **大小限制：** 10MB
+      tags:
+        - food
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+                  description: 食物照片
+      responses:
+        '200':
+          description: 识别成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FoodRecognitionResponse'
+              examples:
+                example1:
+                  summary: 识别成功示例
+                  value:
+                    code: 200
+                    message: "success"
+                    data:
+                      foods:
+                        - food_name: "宫保鸡丁"
+                          calories: 520
+                          protein: 25
+                          fat: 30
+                          carbs: 15
+                          portion: 1
+                          unit: "份"
+                          confidence: 0.85
+                          portion_tip: "约 1 份（200g）"
+                        - food_name: "米饭"
+                          calories: 200
+                          protein: 4
+                          fat: 1
+                          carbs: 45
+                          portion: 1
+                          unit: "碗"
+                          confidence: 0.92
+                          portion_tip: "约 1 碗（150g）"
+                      total_calories: 720
+        '400':
+          description: 请求错误
+        '401':
+          description: 未认证
+        '413':
+          description: 文件过大
+        '415':
+          description: 不支持的文件格式
+        '500':
+          description: AI 识别失败
+
+  /food/records:
+    post:
+      summary: 添加饮食记录
+      description: 记录一餐的饮食信息
+      tags:
+        - food
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FoodRecordCreate'
+            examples:
+              example1:
+                summary: 手动添加示例
+                value:
+                  food_name: "宫保鸡丁"
+                  calories: 520
+                  protein: 25
+                  fat: 30
+                  carbs: 15
+                  portion: 200
+                  unit: "g"
+                  meal_type: "lunch"
+                  record_type: "manual"
+                  recorded_at: "2026-04-05T12:30:00Z"
+      responses:
+        '200':
+          description: 添加成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FoodRecordResponse'
+        '400':
+          description: 请求参数错误
+        '401':
+          description: 未认证
+
+    get:
+      summary: 获取饮食记录列表
+      description: 获取用户的饮食记录（支持分页和筛选）
+      tags:
+        - food
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: meal_type
+          in: query
+          description: 餐次类型筛选
+          schema:
+            type: string
+            enum: [breakfast, lunch, dinner, snack]
+        - name: date
+          in: query
+          description: 日期（YYYY-MM-DD）
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          description: 页码
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          description: 每页数量
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FoodRecordListResponse'
+        '401':
+          description: 未认证
+
+  /food/records/today:
+    get:
+      summary: 获取今日饮食汇总
+      description: 获取用户今日饮食的汇总信息（热量、营养素等）
+      tags:
+        - food
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodayFoodSummaryResponse'
+              examples:
+                example1:
+                  value:
+                    code: 200
+                    message: "success"
+                    data:
+                      date: "2026-04-05"
+                      daily_budget: 1480
+                      total_consumed: 1200
+                      remaining: 280
+                      macros:
+                        protein:
+                          consumed: 35
+                          target: 90
+                        fat:
+                          consumed: 28
+                          target: 60
+                        carbs:
+                          consumed: 120
+                          target: 200
+                      meals:
+                        breakfast:
+                          - record_id: 5001
+                            food_name: "鸡蛋"
+                            calories: 130
+                        lunch:
+                          - record_id: 5002
+                            food_name: "宫保鸡丁"
+                            calories: 520
+                        dinner: []
+                        snack:
+                          - record_id: 5003
+                            food_name: "苹果"
+                            calories: 100
+        '401':
+          description: 未认证
+
+  /food/records/{id}:
+    put:
+      summary: 更新饮食记录
+      description: 更新某条饮食记录的信息
+      tags:
+        - food
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 记录 ID
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FoodRecordUpdate'
+      responses:
+        '200':
+          description: 更新成功
+        '404':
+          description: 记录不存在
+        '401':
+          description: 未认证
+
+    delete:
+      summary: 删除饮食记录
+      description: 删除某条饮食记录
+      tags:
+        - food
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 记录 ID
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 删除成功
+        '404':
+          description: 记录不存在
+        '401':
+          description: 未认证
+
+  /weight/records:
+    post:
+      summary: 记录体重
+      description: 记录当前体重
+      tags:
+        - weight
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeightRecordCreate'
+            examples:
+              example1:
+                summary: 记录体重示例
+                value:
+                  weight: 72.5
+                  note: "早起空腹"
+                  recorded_at: "2026-04-05T08:00:00Z"
+      responses:
+        '200':
+          description: 记录成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeightRecordResponse'
+              examples:
+                example1:
+                  value:
+                    code: 200
+                    message: "success"
+                    data:
+                      record_id: 3001
+                      weight: 72.5
+                      change: -0.3
+                      change_percentage: -0.41
+                      total_loss: 6.0
+                      remaining: 10.0
+        '400':
+          description: 请求参数错误
+        '401':
+          description: 未认证
+
+    get:
+      summary: 获取体重记录列表
+      description: 获取用户的体重记录（支持时间范围筛选）
+      tags:
+        - weight
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          description: 开始日期
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          description: 结束日期
+          schema:
+            type: string
+            format: date
+        - name: days
+          in: query
+          description: 最近 N 天（与日期范围二选一）
+          schema:
+            type: integer
+            default: 30
+            maximum: 365
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeightRecordListResponse'
+        '401':
+          description: 未认证
+
+  /weight/records/{id}:
+    put:
+      summary: 更新体重记录
+      tags:
+        - weight
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeightRecordUpdate'
+      responses:
+        '200':
+          description: 更新成功
+        '404':
+          description: 记录不存在
+        '401':
+          description: 未认证
+
+    delete:
+      summary: 删除体重记录
+      tags:
+        - weight
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 删除成功
+        '404':
+          description: 记录不存在
+        '401':
+          description: 未认证
+
+  /ai/encouragement:
+    post:
+      summary: 获取 AI 鼓励
+      description: |
+        根据当前场景获取 AI 鼓励话语
+        
+        **触发场景：**
+        - meal_logged: 完成饮食记录
+        - weight_logged: 完成体重记录
+        - goal_reached: 达成小目标
+        - ate_too_much: 吃多了
+        - missed_days: 连续几天没打卡
+      tags:
+        - ai
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EncouragementRequest'
+            examples:
+              example1:
+                summary: 完成饮食记录
+                value:
+                  event: "meal_logged"
+                  context:
+                    meal_type: "lunch"
+                    calories: 520
+                    daily_total: 1200
+              example2:
+                summary: 达成目标
+                value:
+                  event: "goal_reached"
+                  context:
+                    milestone: "weight_loss_5kg"
+                    current_weight: 70.0
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EncouragementResponse'
+              examples:
+                example1:
+                  summary: 鼓励示例
+                  value:
+                    code: 200
+                    message: "success"
+                    data:
+                      message: "记录得真及时！👍 今天吃得挺均衡的～"
+                      type: "positive"
+                example2:
+                  summary: 庆祝示例
+                  value:
+                    code: 200
+                    message: "success"
+                    data:
+                      message: "恭喜你！成功减重 5kg！🎉 继续加油！"
+                      type: "congratulation"
+        '400':
+          description: 请求参数错误
+        '401':
+          description: 未认证
+
+  /ai/chat:
+    post:
+      summary: AI 对话
+      description: 与 AI 助手进行对话交流
+      tags:
+        - ai
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+            examples:
+              example1:
+                summary: 用户倾诉
+                value:
+                  message: "我今天吃多了，好难受"
+                  session_id: "session_123"
+              example2:
+                summary: 咨询问题
+                value:
+                  message: "这个能吃吗？"
+                  session_id: "session_123"
+      responses:
+        '200':
+          description: 回复成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+              examples:
+                example1:
+                  value:
+                    code: 200
+                    message: "success"
+                    data:
+                      reply: "抱抱～偶尔多吃很正常啦，不要责怪自己。今天吃的是什么呀？说出来会好受点～"
+                      session_id: "session_123"
+        '400':
+          description: 请求参数错误
+        '401':
+          description: 未认证
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT Bearer Token 认证
+
+  schemas:
+    # ============ 通用响应 ============
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "healthy"
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 400
+        message:
+          type: string
+          example: "请求参数错误"
+        details:
+          type: object
+          additionalProperties: true
+
+    # ============ 用户相关 ============
+    UserProfileCreate:
+      type: object
+      required:
+        - nickname
+        - gender
+        - age
+        - height
+        - current_weight
+        - target_weight
+      properties:
+        nickname:
+          type: string
+          minLength: 2
+          maxLength: 50
+          example: "小明"
+        gender:
+          type: string
+          enum: [male, female]
+          example: "male"
+        age:
+          type: integer
+          minimum: 10
+          maximum: 100
+          example: 28
+        height:
+          type: number
+          format: float
+          minimum: 100
+          maximum: 250
+          example: 175
+        current_weight:
+          type: number
+          format: float
+          minimum: 30
+          maximum: 300
+          example: 75.0
+        target_weight:
+          type: number
+          format: float
+          minimum: 30
+          maximum: 300
+          example: 65.0
+        target_date:
+          type: string
+          format: date
+          example: "2026-08-01"
+
+    UserProfileUpdate:
+      type: object
+      properties:
+        nickname:
+          type: string
+          minLength: 2
+          maxLength: 50
+        current_weight:
+          type: number
+          format: float
+        target_weight:
+          type: number
+          format: float
+        target_date:
+          type: string
+          format: date
+
+    UserProfileResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 200
+        message:
+          type: string
+          example: "success"
+        data:
+          type: object
+          properties:
+            user_id:
+              type: integer
+              example: 1001
+            nickname:
+              type: string
+              example: "小明"
+            gender:
+              type: string
+              example: "male"
+            age:
+              type: integer
+              example: 28
+            height:
+              type: number
+              example: 175
+            current_weight:
+              type: number
+              example: 75.0
+            target_weight:
+              type: number
+              example: 65.0
+            bmi:
+              type: number
+              example: 24.5
+            bmr:
+              type: number
+              example: 1650.5
+            tdee:
+              type: number
+              example: 1980.6
+            daily_budget:
+              type: integer
+              example: 1480
+            streak_days:
+              type: integer
+              example: 7
+            total_loss:
+              type: number
+              example: 3.2
+            token:
+              type: string
+              description: JWT Token（仅创建时返回）
+              example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+    # ============ 饮食相关 ============
+    FoodItem:
+      type: object
+      properties:
+        food_name:
+          type: string
+          example: "宫保鸡丁"
+        calories:
+          type: integer
+          example: 520
+        protein:
+          type: number
+          format: float
+          example: 25
+        fat:
+          type: number
+          format: float
+          example: 30
+        carbs:
+          type: number
+          format: float
+          example: 15
+        portion:
+          type: number
+          format: float
+          example: 1
+        unit:
+          type: string
+          example: "份"
+        confidence:
+          type: number
+          format: float
+          example: 0.85
+        portion_tip:
+          type: string
+          example: "约 1 份（200g）"
+
+    FoodRecordCreate:
+      type: object
+      required:
+        - food_name
+        - calories
+        - meal_type
+        - record_type
+      properties:
+        food_name:
+          type: string
+          example: "宫保鸡丁"
+        calories:
+          type: integer
+          example: 520
+        protein:
+          type: number
+          format: float
+        fat:
+          type: number
+          format: float
+        carbs:
+          type: number
+          format: float
+        portion:
+          type: number
+          format: float
+          example: 200
+        unit:
+          type: string
+          default: "g"
+          example: "g"
+        meal_type:
+          type: string
+          enum: [breakfast, lunch, dinner, snack]
+          example: "lunch"
+        record_type:
+          type: string
+          enum: [photo, search, manual]
+          example: "manual"
+        recorded_at:
+          type: string
+          format: date-time
+
+    FoodRecordUpdate:
+      type: object
+      properties:
+        food_name:
+          type: string
+        calories:
+          type: integer
+        protein:
+          type: number
+        fat:
+          type: number
+        carbs:
+          type: number
+        portion:
+          type: number
+        unit:
+          type: string
+        meal_type:
+          type: string
+          enum: [breakfast, lunch, dinner, snack]
+
+    FoodRecordResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            record_id:
+              type: integer
+            food_name:
+              type: string
+            calories:
+              type: integer
+            meal_type:
+              type: string
+            recorded_at:
+              type: string
+              format: date-time
+
+    FoodRecordListResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            records:
+              type: array
+              items:
+                $ref: '#/components/schemas/FoodRecordResponse'
+            total:
+              type: integer
+            page:
+              type: integer
+            page_size:
+              type: integer
+
+    TodayFoodSummaryResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            date:
+              type: string
+              format: date
+            daily_budget:
+              type: integer
+            total_consumed:
+              type: integer
+            remaining:
+              type: integer
+            macros:
+              type: object
+              properties:
+                protein:
+                  type: object
+                  properties:
+                    consumed:
+                      type: number
+                    target:
+                      type: number
+                fat:
+                  type: object
+                  properties:
+                    consumed:
+                      type: number
+                    target:
+                      type: number
+                carbs:
+                  type: object
+                  properties:
+                    consumed:
+                      type: number
+                    target:
+                      type: number
+            meals:
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FoodRecordResponse'
+
+    FoodRecognitionResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            foods:
+              type: array
+              items:
+                $ref: '#/components/schemas/FoodItem'
+            total_calories:
+              type: integer
+
+    # ============ 体重相关 ============
+    WeightRecordCreate:
+      type: object
+      required:
+        - weight
+      properties:
+        weight:
+          type: number
+          format: float
+          minimum: 30
+          maximum: 300
+          example: 72.5
+        note:
+          type: string
+          maxLength: 200
+          example: "早起空腹"
+        recorded_at:
+          type: string
+          format: date-time
+
+    WeightRecordUpdate:
+      type: object
+      properties:
+        weight:
+          type: number
+          format: float
+        note:
+          type: string
+
+    WeightRecordResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            record_id:
+              type: integer
+            weight:
+              type: number
+            change:
+              type: number
+              description: 较上次变化（kg）
+            change_percentage:
+              type: number
+              description: 较上次变化百分比
+            total_loss:
+              type: number
+              description: 累计减重（kg）
+            remaining:
+              type: number
+              description: 距离目标（kg）
+            recorded_at:
+              type: string
+              format: date-time
+
+    WeightRecordListResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            records:
+              type: array
+              items:
+                $ref: '#/components/schemas/WeightRecordResponse'
+            total:
+              type: integer
+            trend:
+              type: string
+              enum: [up, down, stable]
+            avg_daily_change:
+              type: number
+
+    # ============ AI 相关 ============
+    EncouragementRequest:
+      type: object
+      required:
+        - event
+      properties:
+        event:
+          type: string
+          enum: [meal_logged, weight_logged, goal_reached, ate_too_much, missed_days]
+          example: "meal_logged"
+        context:
+          type: object
+          additionalProperties: true
+          description: 场景上下文信息
+
+    EncouragementResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            message:
+              type: string
+              example: "记录得真及时！👍"
+            type:
+              type: string
+              enum: [positive, comfort, congratulation]
+
+    ChatRequest:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          example: "我今天吃多了"
+        session_id:
+          type: string
+          description: 会话 ID（保持对话连续性）
+
+    ChatResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            reply:
+              type: string
+              example: "抱抱～偶尔多吃很正常啦"
+            session_id:
+              type: string

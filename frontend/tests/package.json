@@ -1,0 +1,26 @@
+{
+  "name": "loss-weight-frontend-tests",
+  "version": "1.0.0",
+  "description": "E2E tests for Loss Weight AI Assistant frontend",
+  "scripts": {
+    "test": "playwright test tests/e2e.test.js",
+    "test:headed": "playwright test tests/e2e.test.js --headed",
+    "test:debug": "playwright test tests/e2e.test.js --debug",
+    "test:report": "playwright show-report",
+    "demo": "node tests/demo.test.js",
+    "demo:headed": "HEADED=1 node tests/demo.test.js",
+    "install:browsers": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0"
+  },
+  "keywords": [
+    "playwright",
+    "e2e",
+    "test",
+    "flutter",
+    "web"
+  ],
+  "author": "",
+  "license": "MIT"
+}

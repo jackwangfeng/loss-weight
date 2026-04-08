@@ -1,0 +1,99 @@
+package config
+
+import (
+	"fmt"
+	"os"
+	"strconv"
+
+	"github.com/spf13/viper"
+)
+
+// Config holds application configuration
+type Config struct {
+	ProjectName    string
+	Version        string
+	APIPrefix      string
+	Port           int
+	Debug          bool
+	DatabaseURL    string
+	RedisURL       string
+	SecretKey      string
+	JWTExpireDays  int
+	LLMAPIKey      string
+	LLMAPIURL      string
+	VisionAPIKey   string
+	VisionAPIURL   string
+	OpenAIKey      string
+	BaiduCVKey     string
+	ChromaURL      string
+}
+
+// Load reads configuration from file and environment variables
+func Load(configPath string) (*Config, error) {
+	// Set default values
+	viper.SetDefault("project_name", "Loss Weight AI")
+	viper.SetDefault("version", "1.0.0")
+	viper.SetDefault("api_prefix", "/v1")
+	viper.SetDefault("port", 8000)
+	viper.SetDefault("debug", true)
+	viper.SetDefault("database_url", "postgresql://postgres:postgres@localhost:5432/lossweight")
+	viper.SetDefault("redis_url", "redis://localhost:6379")
+	viper.SetDefault("secret_key", "your-secret-key-change-in-production")
+	viper.SetDefault("jwt_expire_days", 7)
+
+	// Read config file
+	viper.SetConfigName(configPath)
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath(".")
+	viper.AddConfigPath("./config")
+
+	// Read environment variables
+	viper.AutomaticEnv()
+
+	// Try to read config file (optional)
+	if err := viper.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return nil, fmt.Errorf("failed to read config file: %w", err)
+		}
+	}
+
+	// Build config from viper
+	config := &Config{
+		ProjectName:   viper.GetString("project_name"),
+		Version:       viper.GetString("version"),
+		APIPrefix:     viper.GetString("api_prefix"),
+		Port:          viper.GetInt("port"),
+		Debug:         viper.GetBool("debug"),
+		DatabaseURL:   viper.GetString("database_url"),
+		RedisURL:      viper.GetString("redis_url"),
+		SecretKey:     viper.GetString("secret_key"),
+		JWTExpireDays: viper.GetInt("jwt_expire_days"),
+		LLMAPIKey:     viper.GetString("gemini_api_key"),
+		LLMAPIURL:     viper.GetString("gemini_api_url"),
+		VisionAPIKey:  viper.GetString("vision_api_key"),
+		VisionAPIURL:  viper.GetString("vision_api_url"),
+		OpenAIKey:     viper.GetString("openai_api_key"),
+		BaiduCVKey:    viper.GetString("baidu_cv_api_key"),
+		ChromaURL:     viper.GetString("chroma_url"),
+	}
+
+	return config, nil
+}
+
+// GetEnv gets environment variable with default value
+func GetEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+// GetEnvInt gets environment variable as int with default value
+func GetEnvInt(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		if intValue, err := strconv.Atoi(value); err == nil {
+			return intValue
+		}
+	}
+	return defaultValue
+}
