@@ -105,6 +105,14 @@ tmp/
 *.key
 secrets/
 credentials/
+backend/config.gemini.yaml
+
+# Frontend debug artifacts (ad-hoc screenshots & scripts at frontend root)
+frontend/*.png
+frontend/check_*.js
+frontend/debug_*.js
+frontend/test_ai_*.js
+frontend/test_tabs.js
 
 # macOS
 .DS_Store

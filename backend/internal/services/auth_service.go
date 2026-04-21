@@ -140,6 +140,7 @@ func (s *AuthService) PhoneLogin(phone, code string, ip string) (*LoginResponse,
 
 	// 查找或创建用户账号
 	var account models.UserAccount
+	isNewUser := false
 	if err := s.db.Where("phone = ?", phone).First(&account).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			// 新用户，创建账号
@@ -151,9 +152,31 @@ func (s *AuthService) PhoneLogin(phone, code string, ip string) (*LoginResponse,
 				s.logger.Error("failed to create user account", zap.Error(err))
 				return nil, err
 			}
+			isNewUser = true
 		} else {
 			s.logger.Error("failed to find user account", zap.Error(err))
 			return nil, err
+		}
+	}
+
+	// 检查是否需要创建用户档案
+	if account.UserProfileID == nil {
+		isNewUser = true
+		// 创建默认用户档案
+		defaultProfile := models.UserProfile{
+			OpenID:         fmt.Sprintf("phone_%s", phone),
+			Nickname:       "新用户",
+			CurrentWeight:  70.0, // 默认体重
+			TargetWeight:   65.0, // 默认目标体重
+			ActivityLevel:  1,
+			TargetCalorie:  2000, // 默认目标卡路里
+		}
+		if err := s.db.Create(&defaultProfile).Error; err != nil {
+			s.logger.Error("failed to create user profile", zap.Error(err))
+		} else {
+			// 更新账号关联的用户档案ID
+			account.UserProfileID = &defaultProfile.ID
+			s.db.Save(&account)
 		}
 	}
 
@@ -168,8 +191,6 @@ func (s *AuthService) PhoneLogin(phone, code string, ip string) (*LoginResponse,
 
 	// 生成 Token（简单 JWT，生产环境应该使用更安全的实现）
 	token := fmt.Sprintf("token_%d_%s", account.ID, time.Now().Format("20060102150405"))
-
-	isNewUser := account.UserProfileID == nil
 
 	return &LoginResponse{
 		Token:     token,

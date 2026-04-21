@@ -9,11 +9,17 @@ help:
 	@echo "  make clean    - 清理构建文件"
 	@echo "  make run      - 运行（默认本地模式）"
 
-# 本地开发模式（测试模式）
+# 本地开发模式（测试模式，跳过验证码）
 local:
 	@echo "🚀 启动本地开发服务器（测试模式）..."
 	@echo "⚠️  注意：当前为测试模式，跳过验证码校验"
 	@SKIP_SMS_VERIFY=true go run cmd/server/main.go -config config.test.yaml
+
+# 本地开发模式（启用 Gemini AI）
+local-gemini:
+	@echo "🚀 启动本地开发服务器（Gemini AI 模式）..."
+	@echo "⚠️  注意：当前为测试模式，跳过验证码校验，启用 Gemini AI"
+	@SKIP_SMS_VERIFY=true go run cmd/server/main.go -config config.gemini.yaml
 
 # 运行测试
 test:
