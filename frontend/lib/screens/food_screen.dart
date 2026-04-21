@@ -9,7 +9,9 @@ import '../services/ai_service.dart';
 import '../models/food_record.dart';
 
 class FoodScreen extends StatefulWidget {
-  const FoodScreen({Key? key}) : super(key: key);
+  /// 嵌入到 RecordsScreen 的 TabBar 里时，传 false 避免双 AppBar
+  final bool showAppBar;
+  const FoodScreen({Key? key, this.showAppBar = true}) : super(key: key);
 
   @override
   State<FoodScreen> createState() => _FoodScreenState();
@@ -83,12 +85,14 @@ class _FoodScreenState extends State<FoodScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('饮食记录'),
-        actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadRecords),
-        ],
-      ),
+      appBar: widget.showAppBar
+          ? AppBar(
+              title: const Text('饮食记录'),
+              actions: [
+                IconButton(icon: const Icon(Icons.refresh), onPressed: _loadRecords),
+              ],
+            )
+          : null,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
@@ -96,6 +100,7 @@ class _FoodScreenState extends State<FoodScreen> {
               child: _buildBody(),
             ),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'food_fab',
         onPressed: () => _openAddSheet(),
         icon: const Icon(Icons.add),
         label: const Text('记录'),

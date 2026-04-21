@@ -6,7 +6,8 @@ import '../services/weight_service.dart';
 import '../models/weight_record.dart';
 
 class WeightScreen extends StatefulWidget {
-  const WeightScreen({Key? key}) : super(key: key);
+  final bool showAppBar;
+  const WeightScreen({Key? key, this.showAppBar = true}) : super(key: key);
 
   @override
   State<WeightScreen> createState() => _WeightScreenState();
@@ -52,15 +53,17 @@ class _WeightScreenState extends State<WeightScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('体重记录'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadRecords,
-          ),
-        ],
-      ),
+      appBar: widget.showAppBar
+          ? AppBar(
+              title: const Text('体重记录'),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  onPressed: _loadRecords,
+                ),
+              ],
+            )
+          : null,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _records.isEmpty
@@ -101,6 +104,7 @@ class _WeightScreenState extends State<WeightScreen> {
                   ),
                 ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'weight_fab',
         onPressed: () => _showAddWeightDialog(),
         child: const Icon(Icons.add),
       ),

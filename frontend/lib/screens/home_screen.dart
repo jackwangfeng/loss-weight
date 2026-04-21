@@ -3,9 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/user_provider.dart';
 import '../screens/login_screen.dart';
-import 'food_screen.dart';
-import 'weight_screen.dart';
-import 'exercise_screen.dart';
+import 'records_screen.dart';
 import 'ai_screen.dart';
 import 'profile_screen.dart';
 import '../services/ai_service.dart';
@@ -19,6 +17,16 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
+  // 记录 tab 里的内部 tab 索引（0=饮食 1=运动 2=体重）
+  int _recordsTab = 0;
+
+  /// 外部快捷动作调用：切到"记录"，并预选内部子 tab
+  void jumpToRecords(int subTab) {
+    setState(() {
+      _selectedIndex = 1;
+      _recordsTab = subTab;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -28,13 +36,13 @@ class _HomeScreenState extends State<HomeScreen> {
         final user = userProvider.currentUser;
 
         return Scaffold(
+          // 记录页带内部 TabBar：initialTab 用 key 触发，每次想直达某一 tab
+          // 就换 key
           body: IndexedStack(
             index: _selectedIndex,
             children: [
               DashboardScreen(user: user, isLoggedIn: isLoggedIn),
-              const FoodScreen(),
-              const ExerciseScreen(),
-              const WeightScreen(),
+              RecordsScreen(key: ValueKey('records-$_recordsTab'), initialTab: _recordsTab),
               const AIScreen(),
               const ProfileScreen(),
             ],
@@ -53,19 +61,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 label: '首页',
               ),
               NavigationDestination(
-                icon: Icon(Icons.restaurant_outlined),
-                selectedIcon: Icon(Icons.restaurant),
-                label: '饮食',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.directions_run_outlined),
-                selectedIcon: Icon(Icons.directions_run),
-                label: '运动',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.monitor_weight_outlined),
-                selectedIcon: Icon(Icons.monitor_weight),
-                label: '体重',
+                icon: Icon(Icons.edit_note_outlined),
+                selectedIcon: Icon(Icons.edit_note),
+                label: '记录',
               ),
               NavigationDestination(
                 icon: Icon(Icons.smart_toy_outlined),
@@ -140,7 +138,7 @@ class DashboardScreen extends StatelessWidget {
             _DailyBriefCard(userId: user.id, onChatTap: () {
               final homeState = context.findAncestorStateOfType<_HomeScreenState>();
               homeState?.setState(() {
-                homeState._selectedIndex = 4; // AI tab（切到 AI 聊天）
+                homeState._selectedIndex = 2; // AI tab（记录/AI/我的 中 AI 是 index 2）
               });
             }),
             const SizedBox(height: 16),
@@ -206,10 +204,8 @@ class DashboardScreen extends StatelessWidget {
                     Icons.restaurant,
                     Colors.orange,
                     () {
-                      final homeState = context.findAncestorStateOfType<_HomeScreenState>();
-                      homeState?.setState(() {
-                        homeState._selectedIndex = 1;
-                      });
+                      context.findAncestorStateOfType<_HomeScreenState>()
+                          ?.jumpToRecords(0);
                     },
                   ),
                 ),
@@ -221,10 +217,8 @@ class DashboardScreen extends StatelessWidget {
                     Icons.directions_run,
                     Colors.red,
                     () {
-                      final homeState = context.findAncestorStateOfType<_HomeScreenState>();
-                      homeState?.setState(() {
-                        homeState._selectedIndex = 2;
-                      });
+                      context.findAncestorStateOfType<_HomeScreenState>()
+                          ?.jumpToRecords(1);
                     },
                   ),
                 ),
@@ -236,10 +230,8 @@ class DashboardScreen extends StatelessWidget {
                     Icons.monitor_weight,
                     Colors.blue,
                     () {
-                      final homeState = context.findAncestorStateOfType<_HomeScreenState>();
-                      homeState?.setState(() {
-                        homeState._selectedIndex = 3;
-                      });
+                      context.findAncestorStateOfType<_HomeScreenState>()
+                          ?.jumpToRecords(2);
                     },
                   ),
                 ),

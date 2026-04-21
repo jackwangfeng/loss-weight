@@ -7,7 +7,8 @@ import '../services/ai_service.dart';
 import '../models/exercise_record.dart';
 
 class ExerciseScreen extends StatefulWidget {
-  const ExerciseScreen({Key? key}) : super(key: key);
+  final bool showAppBar;
+  const ExerciseScreen({Key? key, this.showAppBar = true}) : super(key: key);
   @override
   State<ExerciseScreen> createState() => _ExerciseScreenState();
 }
@@ -76,12 +77,14 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('运动记录'),
-        actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
-        ],
-      ),
+      appBar: widget.showAppBar
+          ? AppBar(
+              title: const Text('运动记录'),
+              actions: [
+                IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+              ],
+            )
+          : null,
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
@@ -89,6 +92,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
               child: _buildBody(),
             ),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'exercise_fab',
         onPressed: () => _openAddSheet(),
         icon: const Icon(Icons.add),
         label: const Text('记录'),

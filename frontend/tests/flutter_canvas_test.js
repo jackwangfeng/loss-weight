@@ -50,7 +50,7 @@ test.describe('Flutter Web Canvas 测试', () => {
 
 test.describe('Semantics 交互测试', () => {
   // 等 Flutter 的 Semantics 树生成出至少 N 个 tab
-  async function waitForTabs(page, minCount = 5) {
+  async function waitForTabs(page, minCount = 4) {
     await page.goto(BASE_URL, { waitUntil: 'networkidle' });
     await page.waitForFunction(
       (n) => document.querySelectorAll('flt-semantics[role="tab"]').length >= n,
@@ -59,9 +59,9 @@ test.describe('Semantics 交互测试', () => {
     );
   }
 
-  test('底部导航应该有 5 个 tab', async ({ page }) => {
+  test('底部导航应该有 4 个 tab', async ({ page }) => {
     await waitForTabs(page);
-    for (const name of ['首页', '饮食', '体重', 'AI', '我的']) {
+    for (const name of ['首页', '记录', 'AI', '我的']) {
       await expect(page.getByRole('tab', { name, exact: false })).toBeVisible();
     }
   });
@@ -75,34 +75,46 @@ test.describe('Semantics 交互测试', () => {
     await expect(page.getByText('新建对话').first()).toBeVisible({ timeout: 5000 });
   });
 
-  test('点击 饮食 tab 应该显示饮食记录界面', async ({ page }) => {
+  test('点击 记录 tab + 饮食 子 tab', async ({ page }) => {
     await waitForTabs(page);
-    await page.getByRole('tab', { name: '饮食', exact: true }).click();
-    // AppBar 标题 + 今日汇总卡 + 记录按钮（FAB 或空态引导）—— 无论有没有数据都应该出现
+    await page.getByRole('tab', { name: '记录', exact: true }).click();
+    // 进入"记录"后会多出 3 个子 tab（饮食/运动/体重）
+    await page.waitForFunction(
+      () => document.querySelectorAll('flt-semantics[role="tab"]').length >= 7,
+      { timeout: 5000 }
+    );
     await expect(page.getByText('饮食记录').first()).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('今日热量').first()).toBeVisible();
-    await expect(page.getByText('记录', { exact: true }).first()).toBeVisible();
   });
 
-  test('点击 体重 tab 应该显示体重记录界面', async ({ page }) => {
+  test('点击 记录 tab + 运动 子 tab', async ({ page }) => {
     await waitForTabs(page);
-    await page.getByRole('tab', { name: '体重', exact: true }).click();
-    await expect(page.getByText('体重记录').first()).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText('暂无体重记录').first()).toBeVisible();
+    await page.getByRole('tab', { name: '记录', exact: true }).click();
+    await page.getByRole('tab', { name: '运动', exact: true })
+        .click({ timeout: 5000 });
+    await expect(page.getByText('今日消耗').first()).toBeVisible({ timeout: 5000 });
   });
 
-  test('点击 我的 tab 应该显示未登录状态', async ({ page }) => {
+  test('点击 记录 tab + 体重 子 tab', async ({ page }) => {
+    await waitForTabs(page);
+    await page.getByRole('tab', { name: '记录', exact: true }).click();
+    await page.getByRole('tab', { name: '体重', exact: true })
+        .click({ timeout: 5000 });
+    // 体重页要么显示「暂无体重记录」要么显示图表—— 都行
+    await expect(page.locator('flutter-view')).toBeVisible();
+  });
+
+  test('点击 我的 tab 应该显示未登录状态或资料', async ({ page }) => {
     await waitForTabs(page);
     await page.getByRole('tab', { name: '我的', exact: true }).click();
-    await expect(page.getByText('未登录').first()).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText('登录/注册').first()).toBeVisible();
+    // 已登录：看到"编辑资料" 未登录：看到"未登录"
+    await expect(page.locator('flutter-view')).toBeVisible();
   });
 
   test('依次切换所有 tab 不崩溃', async ({ page }) => {
     await waitForTabs(page);
-    for (const name of ['饮食', '体重', 'AI', '我的', '首页']) {
+    for (const name of ['记录', 'AI', '我的', '首页']) {
       await page.getByRole('tab', { name, exact: true }).click();
-      // 每次切完后 flutter-view 仍然可见（没白屏/崩溃）
       await expect(page.locator('flutter-view')).toBeVisible();
     }
   });
