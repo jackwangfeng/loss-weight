@@ -84,6 +84,7 @@ func SetupAIRoutes(v1 *gin.RouterGroup, db *gorm.DB, logger *zap.Logger, cfg *co
 		ai.POST("/recognize", aiHandler.RecognizeFood)
 		ai.POST("/estimate-nutrition", aiHandler.EstimateNutrition)
 		ai.POST("/estimate-exercise", aiHandler.EstimateExercise)
+		ai.POST("/parse-weight", aiHandler.ParseWeight)
 		ai.POST("/daily-brief", aiHandler.GetDailyBrief)
 		ai.POST("/encouragement", aiHandler.GetEncouragement)
 		ai.POST("/chat", aiHandler.Chat)

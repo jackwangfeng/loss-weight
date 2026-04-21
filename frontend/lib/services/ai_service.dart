@@ -126,6 +126,19 @@ class AIService {
     }
   }
 
+  /// 解析体重自然文本（例："68.5kg"、"体脂 22%"、"今天早 67.8"）
+  /// 返回：{weight, body_fat, muscle, water, note, confidence}
+  Future<Map<String, dynamic>> parseWeight({required String text}) async {
+    final response = await _apiService.post('/ai/parse-weight', {
+      'text': text,
+    });
+    if (response.statusCode == 200) {
+      return response.data;
+    } else {
+      throw Exception('体重解析失败');
+    }
+  }
+
   /// 今日 AI 简报：用于首页顶部卡片
   /// 返回：{target_calories, calories_eaten, calories_burned, calories_remaining,
   ///        meals_logged, exercises_logged, brief}

@@ -39,6 +39,21 @@ func (h *AIHandler) RecognizeFood(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+func (h *AIHandler) ParseWeight(c *gin.Context) {
+	var req services.ParseWeightRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	result, err := h.service.ParseWeightFromText(req.Text)
+	if err != nil {
+		h.logger.Error("parse weight failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "体重解析失败"})
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
 func (h *AIHandler) EstimateExercise(c *gin.Context) {
 	var req services.EstimateExerciseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

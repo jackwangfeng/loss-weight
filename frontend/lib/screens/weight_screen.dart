@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../providers/user_provider.dart';
 import '../services/weight_service.dart';
+import '../services/ai_service.dart';
 import '../models/weight_record.dart';
 
 class WeightScreen extends StatefulWidget {
@@ -15,6 +17,7 @@ class WeightScreen extends StatefulWidget {
 
 class _WeightScreenState extends State<WeightScreen> {
   final WeightService _weightService = WeightService();
+  final AIService _aiService = AIService();
   List<WeightRecord> _records = [];
   bool _isLoading = false;
 
@@ -287,151 +290,25 @@ class _WeightScreenState extends State<WeightScreen> {
     );
   }
 
-  void _showAddWeightDialog() {
-    final formKey = GlobalKey<FormState>();
-    double weight = 0;
-    double bodyFat = 0;
-    double muscle = 0;
-    double water = 0;
-    String note = '';
-    DateTime selectedDate = DateTime.now();
-
-    showDialog(
+  Future<void> _showAddWeightDialog() async {
+    final user = context.read<UserProvider>().currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先登录')),
+      );
+      return;
+    }
+    final created = await showModalBottomSheet<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('添加体重记录'),
-        content: Form(
-          key: formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  decoration: const InputDecoration(
-                    labelText: '体重 (kg)',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.monitor_weight),
-                  ),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return '请输入体重';
-                    }
-                    return null;
-                  },
-                  onSaved: (value) => weight = double.parse(value!),
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  decoration: const InputDecoration(
-                    labelText: '体脂率 (%)',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.pie_chart),
-                  ),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  onSaved: (value) => bodyFat = double.parse(value ?? '0'),
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  decoration: const InputDecoration(
-                    labelText: '肌肉量 (kg)',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.fitness_center),
-                  ),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  onSaved: (value) => muscle = double.parse(value ?? '0'),
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  decoration: const InputDecoration(
-                    labelText: '水分 (%)',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.water),
-                  ),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  onSaved: (value) => water = double.parse(value ?? '0'),
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  decoration: const InputDecoration(
-                    labelText: '备注',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.note),
-                  ),
-                  maxLines: 2,
-                  onSaved: (value) => note = value ?? '',
-                ),
-                const SizedBox(height: 16),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.calendar_today),
-                  title: const Text('测量日期'),
-                  subtitle: Text(
-                    '${selectedDate.year}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}',
-                  ),
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: selectedDate,
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime.now(),
-                    );
-                    if (picked != null) {
-                      setState(() {
-                        selectedDate = picked;
-                      });
-                    }
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              if (formKey.currentState!.validate()) {
-                formKey.currentState!.save();
-
-                try {
-                  final userProvider = Provider.of<UserProvider>(context, listen: false);
-                  if (userProvider.currentUser != null) {
-                    await _weightService.createRecord(
-                      userId: userProvider.currentUser!.id,
-                      weight: weight,
-                      bodyFat: bodyFat,
-                      muscle: muscle,
-                      water: water,
-                      note: note,
-                      measuredAt: selectedDate,
-                    );
-
-                    if (mounted) {
-                      Navigator.pop(context);
-                      _loadRecords();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('添加成功')),
-                      );
-                    }
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('添加失败：$e')),
-                    );
-                  }
-                }
-              }
-            },
-            child: const Text('添加'),
-          ),
-        ],
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _AddWeightSheet(
+        userId: user.id,
+        weightService: _weightService,
+        aiService: _aiService,
       ),
     );
+    if (created == true) _loadRecords();
   }
 
   void _showEditWeightDialog(WeightRecord record) {
@@ -625,5 +502,310 @@ class _WeightScreenState extends State<WeightScreen> {
         ],
       ),
     );
+  }
+}
+
+// ============================================================================
+//  添加体重 BottomSheet（支持 AI 文本解析）
+// ============================================================================
+
+class _AddWeightSheet extends StatefulWidget {
+  final int userId;
+  final WeightService weightService;
+  final AIService aiService;
+  const _AddWeightSheet({
+    required this.userId,
+    required this.weightService,
+    required this.aiService,
+  });
+
+  @override
+  State<_AddWeightSheet> createState() => _AddWeightSheetState();
+}
+
+class _AddWeightSheetState extends State<_AddWeightSheet> {
+  final _descCtrl = TextEditingController();
+  final _weightCtrl = TextEditingController();
+  final _bodyFatCtrl = TextEditingController();
+  final _muscleCtrl = TextEditingController();
+  final _waterCtrl = TextEditingController();
+  final _noteCtrl = TextEditingController();
+  DateTime _measuredAt = DateTime.now();
+  bool _aiLoading = false;
+  bool _submitting = false;
+  bool _showMore = false;
+
+  @override
+  void dispose() {
+    _descCtrl.dispose();
+    _weightCtrl.dispose();
+    _bodyFatCtrl.dispose();
+    _muscleCtrl.dispose();
+    _waterCtrl.dispose();
+    _noteCtrl.dispose();
+    super.dispose();
+  }
+
+  void _apply(Map<String, dynamic> r) {
+    setState(() {
+      final w = (r['weight'] as num?)?.toDouble() ?? 0;
+      if (w > 0) _weightCtrl.text = w.toStringAsFixed(1);
+      final bf = (r['body_fat'] as num?)?.toDouble() ?? 0;
+      if (bf > 0) _bodyFatCtrl.text = bf.toStringAsFixed(1);
+      final m = (r['muscle'] as num?)?.toDouble() ?? 0;
+      if (m > 0) _muscleCtrl.text = m.toStringAsFixed(1);
+      final wt = (r['water'] as num?)?.toDouble() ?? 0;
+      if (wt > 0) _waterCtrl.text = wt.toStringAsFixed(1);
+      final note = (r['note'] ?? '').toString();
+      if (note.isNotEmpty) _noteCtrl.text = note;
+      if (bf + m + wt > 0 || note.isNotEmpty) _showMore = true;
+    });
+  }
+
+  Future<void> _aiParse() async {
+    final text = _descCtrl.text.trim();
+    if (text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('随便写，比如 "68.5kg 早"、"67 体脂22"')),
+      );
+      return;
+    }
+    setState(() => _aiLoading = true);
+    try {
+      final r = await widget.aiService.parseWeight(text: text);
+      _apply(r);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('解析失败：$e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _aiLoading = false);
+    }
+  }
+
+  Future<void> _pickDate() async {
+    final d = await showDatePicker(
+      context: context,
+      initialDate: _measuredAt,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+    if (d != null) setState(() => _measuredAt = d);
+  }
+
+  Future<void> _submit() async {
+    final w = double.tryParse(_weightCtrl.text.trim()) ?? 0;
+    if (w <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请输入体重（或让 AI 帮你解析）')),
+      );
+      return;
+    }
+    setState(() => _submitting = true);
+    try {
+      await widget.weightService.createRecord(
+        userId: widget.userId,
+        weight: w,
+        bodyFat: double.tryParse(_bodyFatCtrl.text.trim()) ?? 0,
+        muscle: double.tryParse(_muscleCtrl.text.trim()) ?? 0,
+        water: double.tryParse(_waterCtrl.text.trim()) ?? 0,
+        note: _noteCtrl.text.trim(),
+        measuredAt: _measuredAt,
+      );
+      if (mounted) {
+        Navigator.pop(context, true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('体重已记录')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('保存失败：$e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final insets = MediaQuery.of(context).viewInsets;
+    return Padding(
+      padding: EdgeInsets.only(bottom: insets.bottom),
+      child: DraggableScrollableSheet(
+        initialChildSize: 0.75,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (ctx, scroll) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 10, bottom: 6),
+                height: 4, width: 40,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Expanded(
+                child: ListView(
+                  controller: scroll,
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                  children: _buildFields(),
+                ),
+              ),
+              SafeArea(
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border(top: BorderSide(color: Colors.grey[200]!)),
+                  ),
+                  child: SizedBox(
+                    width: double.infinity, height: 48,
+                    child: FilledButton(
+                      onPressed: _submitting ? null : _submit,
+                      child: _submitting
+                          ? const SizedBox(width: 20, height: 20,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white))
+                          : const Text('保存'),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildFields() {
+    InputDecoration deco(String label) => InputDecoration(
+          labelText: label,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        );
+    final numFmt = [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))];
+    final decimalKb = const TextInputType.numberWithOptions(decimal: true);
+
+    return [
+      Row(children: [
+        const Text('添加体重记录',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+        const Spacer(),
+        IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+      ]),
+      const SizedBox(height: 8),
+
+      Text('让 AI 帮你算',
+          style: TextStyle(fontSize: 13, color: Colors.grey[700], fontWeight: FontWeight.w600)),
+      const SizedBox(height: 8),
+      Row(children: [
+        Expanded(child: TextField(
+          controller: _descCtrl,
+          decoration: InputDecoration(
+            hintText: '例：68.5kg 早、67 体脂22%',
+            filled: true, fillColor: Colors.grey[100],
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          ),
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _aiParse(),
+        )),
+        const SizedBox(width: 8),
+        FilledButton.tonal(
+          onPressed: _aiLoading ? null : _aiParse,
+          child: _aiLoading
+              ? const SizedBox(width: 16, height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text('解析'),
+        ),
+      ]),
+
+      const SizedBox(height: 20),
+      Text('详细信息',
+          style: TextStyle(fontSize: 13, color: Colors.grey[700], fontWeight: FontWeight.w600)),
+      const SizedBox(height: 8),
+      TextField(
+        controller: _weightCtrl,
+        decoration: deco('体重 (kg) *'),
+        keyboardType: decimalKb,
+        inputFormatters: numFmt,
+      ),
+      const SizedBox(height: 12),
+
+      OutlinedButton.icon(
+        onPressed: _pickDate,
+        icon: const Icon(Icons.calendar_today),
+        label: Text('测量日期：${_measuredAt.year}-'
+            '${_measuredAt.month.toString().padLeft(2, "0")}-'
+            '${_measuredAt.day.toString().padLeft(2, "0")}'),
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          minimumSize: const Size.fromHeight(48),
+        ),
+      ),
+      const SizedBox(height: 12),
+
+      InkWell(
+        onTap: () => setState(() => _showMore = !_showMore),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            children: [
+              Icon(_showMore ? Icons.expand_less : Icons.expand_more,
+                  size: 20, color: Colors.grey[700]),
+              const SizedBox(width: 4),
+              Text('更多（体脂 / 肌肉 / 水分 / 备注，可选）',
+                  style: TextStyle(color: Colors.grey[700])),
+            ],
+          ),
+        ),
+      ),
+      if (_showMore) ...[
+        Row(children: [
+          Expanded(child: TextField(
+            controller: _bodyFatCtrl,
+            decoration: deco('体脂率 (%)'),
+            keyboardType: decimalKb,
+            inputFormatters: numFmt,
+          )),
+          const SizedBox(width: 8),
+          Expanded(child: TextField(
+            controller: _muscleCtrl,
+            decoration: deco('肌肉 (kg)'),
+            keyboardType: decimalKb,
+            inputFormatters: numFmt,
+          )),
+          const SizedBox(width: 8),
+          Expanded(child: TextField(
+            controller: _waterCtrl,
+            decoration: deco('水分 (%)'),
+            keyboardType: decimalKb,
+            inputFormatters: numFmt,
+          )),
+        ]),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _noteCtrl,
+          decoration: deco('备注'),
+        ),
+      ],
+    ];
   }
 }

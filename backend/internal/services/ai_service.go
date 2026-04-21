@@ -66,6 +66,19 @@ type EstimateNutritionRequest struct {
 	Text string `json:"text" binding:"required"`
 }
 
+type ParseWeightRequest struct {
+	Text string `json:"text" binding:"required"`
+}
+
+type ParseWeightResponse struct {
+	Weight     float32 `json:"weight"`
+	BodyFat    float32 `json:"body_fat"`
+	Muscle     float32 `json:"muscle"`
+	Water      float32 `json:"water"`
+	Note       string  `json:"note"`
+	Confidence float32 `json:"confidence"`
+}
+
 type EstimateExerciseRequest struct {
 	Text string `json:"text" binding:"required"`
 }
@@ -323,6 +336,48 @@ JSON 格式：
 	}
 	jsonText := stripMarkdownCodeFence(resp.Content)
 	var out RecognizeFoodResponse
+	if err := json.Unmarshal([]byte(jsonText), &out); err != nil {
+		return nil, fmt.Errorf("解析 LLM 返回失败: %w (原文: %s)", err, resp.Content)
+	}
+	return &out, nil
+}
+
+// ParseWeightFromText: 把自然语言（例："68.5kg 体脂 22%"、"今天 67.8"、"早 68 晚 67.5"）
+// 解析出结构化体重信息。体重本身简单，但希望形态一致（都走 AI 解析）。
+func (s *AIService) ParseWeightFromText(text string) (*ParseWeightResponse, error) {
+	if s.llmAPIKey == "" {
+		if !s.allowMock {
+			return nil, errLLMNotConfigured
+		}
+		s.logger.Warn("LLM API not configured — parse-weight 返回 mock（debug 模式）")
+		return &ParseWeightResponse{Weight: 70, Confidence: 0.5}, nil
+	}
+
+	prompt := fmt.Sprintf(`从下面的文本里解析体重数据。严格只返回 JSON，不要 markdown 代码块。
+
+文本：%s
+
+JSON 格式：
+{
+  "weight": 体重(kg, 必需),
+  "body_fat": 体脂率(百分比, 没有则 0),
+  "muscle": 肌肉量(kg, 没有则 0),
+  "water": 水分(百分比, 没有则 0),
+  "note": "如果文本里有备注/心情/时段标注（如「早」「晚」），简短 20 字以内；否则空串",
+  "confidence": 0-1
+}
+
+规则：
+- 数字不带单位
+- 如果只有一个体重数字，就填 weight 字段
+- 如果多次测量，取最近/最后一个`, text)
+
+	resp, err := s.callLLM([]ChatMessage{{Role: "user", Content: prompt}})
+	if err != nil {
+		return nil, err
+	}
+	jsonText := stripMarkdownCodeFence(resp.Content)
+	var out ParseWeightResponse
 	if err := json.Unmarshal([]byte(jsonText), &out); err != nil {
 		return nil, fmt.Errorf("解析 LLM 返回失败: %w (原文: %s)", err, resp.Content)
 	}
