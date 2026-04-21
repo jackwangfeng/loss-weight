@@ -1,222 +1,163 @@
 #!/bin/bash
+#
+# 减肥 AI 助理 — 前端 E2E 测试运行脚本
+#
+# 流程：
+#   1. 检查后端 (localhost:8000)
+#   2. flutter build web --release    （除非 --skip-build）
+#   3. 起 python http.server 在 :8888 serve build/web
+#   4. 跑 Playwright 测试
+#   5. 退出时自动停掉静态服务器
+#
+# 用法：
+#   ./run_e2e_tests.sh                  默认：构建 + 服务 + 跑全套
+#   ./run_e2e_tests.sh --skip-build     跳过 flutter build（build/web 已存在时）
+#   ./run_e2e_tests.sh --headed         开可视浏览器
+#   ./run_e2e_tests.sh --report         跑完打开 HTML 报告
+#   ./run_e2e_tests.sh --install        安装 Playwright 依赖和 Chromium
+#   ./run_e2e_tests.sh -- <pw args>     `--` 后面的原样透传给 `npx playwright test`
 
-# 减肥 AI 助理 - 前端 E2E 测试运行脚本
-# 使用方法:
-#   ./run_e2e_tests.sh           # 正常运行测试
-#   ./run_e2e_tests.sh --headed  # 显示浏览器界面
-#   ./run_e2e_tests.sh --debug   # 调试模式
-#   ./run_e2e_tests.sh --help    # 显示帮助
+set -u
 
-set -e
-
-# 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+BLUE='\033[0;34m'
+NC='\033[0m'
 
-# 脚本目录
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
-# 帮助信息
+FRONTEND_PORT="${FRONTEND_PORT:-8888}"
+BACKEND_URL="${BACKEND_URL:-http://localhost:8000}"
+FRONTEND_URL="http://localhost:${FRONTEND_PORT}"
+TEST_FILES=(tests/flutter_canvas_test.js tests/backend_api_test.js)
+
+STATIC_SRV_PID=""
+STARTED_STATIC_SRV=false
+
+cleanup() {
+    if [ "$STARTED_STATIC_SRV" = true ] && [ -n "$STATIC_SRV_PID" ]; then
+        echo -e "\n${YELLOW}🧹 关闭静态服务器 (pid=$STATIC_SRV_PID)...${NC}"
+        kill "$STATIC_SRV_PID" 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT INT TERM
+
 show_help() {
-    echo "用法：$0 [选项]"
-    echo ""
-    echo "选项:"
-    echo "  --headed      显示浏览器界面（非无头模式）"
-    echo "  --debug       调试模式"
-    echo "  --report      运行测试后打开报告"
-    echo "  --install     安装 Playwright 和浏览器"
-    echo "  --help        显示此帮助信息"
-    echo ""
-    echo "示例:"
-    echo "  $0                    # 正常运行测试"
-    echo "  $0 --headed           # 显示浏览器界面"
-    echo "  $0 --debug            # 调试模式"
-    echo "  $0 --install          # 安装依赖"
-    echo ""
+    sed -n '3,19p' "$0" | sed 's/^# \?//'
 }
 
-# 检查 Node.js 是否安装
-check_node() {
-    if ! command -v node &> /dev/null; then
-        echo -e "${RED}错误：未找到 Node.js，请先安装 Node.js${NC}"
-        exit 1
-    fi
-    
-    echo "Node.js 版本：$(node -v)"
-    echo "npm 版本：$(npm -v)"
-}
-
-# 安装 Playwright
 install_playwright() {
-    echo -e "${YELLOW}正在安装 Playwright...${NC}"
-    
-    # 检查 package.json 是否存在
-    if [ ! -f "package.json" ]; then
-        echo -e "${RED}错误：未找到 package.json，请在 frontend 目录下运行此脚本${NC}"
+    echo -e "${YELLOW}📦 安装 Playwright 依赖...${NC}"
+    npm install -D @playwright/test
+    npx playwright install chromium
+    echo -e "${GREEN}✓ 安装完成${NC}"
+}
+
+check_backend() {
+    echo -e "${YELLOW}🔍 检查后端 ${BACKEND_URL}/health ...${NC}"
+    if curl -sf "${BACKEND_URL}/health" > /dev/null 2>&1; then
+        echo -e "${GREEN}✓ 后端活着${NC}"
+    else
+        echo -e "${RED}✗ 后端未运行${NC}"
+        echo "  请先启动：cd backend && SKIP_SMS_VERIFY=true go run cmd/server/main.go -config config.test.yaml"
         exit 1
     fi
-    
-    # 安装 Playwright
-    npm install -D @playwright/test
-    
-    # 安装浏览器
-    npx playwright install chromium
-    
-    echo -e "${GREEN}Playwright 安装完成！${NC}"
 }
 
-# 检查前端服务是否运行
-check_frontend_server() {
-    echo -e "${YELLOW}检查前端服务是否运行...${NC}"
-    
-    if curl -s http://localhost:8888 > /dev/null 2>&1; then
-        echo -e "${GREEN}✓ 前端服务正在运行 (http://localhost:8888)${NC}"
-        return 0
-    else
-        echo -e "${YELLOW}⚠ 前端服务未运行${NC}"
-        echo "请先启动前端服务："
-        echo "  cd frontend"
-        echo "  flutter run -d web-server --web-port=8888"
-        echo ""
-        read -p "是否现在启动前端服务？(y/n) " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            echo -e "${YELLOW}正在启动前端服务...${NC}"
-            flutter run -d web-server --web-port=8888 &
-            sleep 10
-        else
-            echo -e "${RED}测试无法继续，已退出${NC}"
-            exit 1
+build_web() {
+    if [ ! -f pubspec.yaml ]; then
+        echo -e "${RED}✗ 当前目录不是 Flutter 工程${NC}"
+        exit 1
+    fi
+    echo -e "${YELLOW}🔨 flutter build web --release ...${NC}"
+    flutter build web --release
+    echo -e "${GREEN}✓ 构建完成：build/web/${NC}"
+}
+
+ensure_static_server() {
+    if curl -sf "${FRONTEND_URL}/flutter_bootstrap.js" > /dev/null 2>&1; then
+        echo -e "${GREEN}✓ 静态服务器已在 ${FRONTEND_URL}，复用${NC}"
+        return
+    fi
+    if [ ! -f build/web/index.html ]; then
+        echo -e "${RED}✗ 找不到 build/web/index.html，请先 build（去掉 --skip-build）${NC}"
+        exit 1
+    fi
+    echo -e "${YELLOW}🚀 起静态服务器 python3 -m http.server ${FRONTEND_PORT}...${NC}"
+    python3 -m http.server "$FRONTEND_PORT" --directory build/web > /tmp/e2e_static_srv.log 2>&1 &
+    STATIC_SRV_PID=$!
+    STARTED_STATIC_SRV=true
+    # 等待就绪
+    for _ in $(seq 1 20); do
+        sleep 0.5
+        if curl -sf "${FRONTEND_URL}/" > /dev/null 2>&1; then
+            echo -e "${GREEN}✓ 静态服务器就绪 (pid=$STATIC_SRV_PID)${NC}"
+            return
         fi
-    fi
-}
-
-# 检查后端服务是否运行
-check_backend_server() {
-    echo -e "${YELLOW}检查后端服务是否运行...${NC}"
-    
-    if curl -s http://localhost:8000 > /dev/null 2>&1; then
-        echo -e "${GREEN}✓ 后端服务正在运行 (http://localhost:8000)${NC}"
-        return 0
-    else
-        echo -e "${YELLOW}⚠ 后端服务未运行${NC}"
-        echo "提示：后端服务未运行，部分测试可能会失败"
-        echo "可以使用 'make local' 启动后端服务："
-        echo "  cd backend"
-        echo "  make local"
-        echo ""
-    fi
-}
-
-# 运行测试
-run_tests() {
-    local extra_args="$1"
-    
-    echo -e "${YELLOW}正在运行 E2E 测试...${NC}"
-    echo "基础 URL: ${BASE_URL:-http://localhost:8888}"
-    echo "API URL: ${API_URL:-http://localhost:8000}"
-    echo ""
-    
-    # 运行 Playwright 测试
-    npx playwright test tests/e2e.test.js $extra_args
-    
-    local exit_code=$?
-    
-    echo ""
-    if [ $exit_code -eq 0 ]; then
-        echo -e "${GREEN}✓ 所有测试通过！${NC}"
-    else
-        echo -e "${RED}✗ 部分测试失败${NC}"
-    fi
-    
-    # 显示报告路径
-    echo ""
-    echo "测试报告已生成："
-    echo "  HTML 报告：file://$SCRIPT_DIR/playwright-report/index.html"
-    echo "  JSON 结果：$SCRIPT_DIR/test-results.json"
-    
-    return $exit_code
-}
-
-# 主函数
-main() {
-    echo "======================================"
-    echo "  减肥 AI 助理 - E2E 测试"
-    echo "======================================"
-    echo ""
-    
-    # 解析参数
-    local extra_args=""
-    local show_report=false
-    
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            --headed)
-                extra_args="--headed"
-                shift
-                ;;
-            --debug)
-                extra_args="--debug"
-                shift
-                ;;
-            --report)
-                show_report=true
-                shift
-                ;;
-            --install)
-                install_playwright
-                exit 0
-                ;;
-            --help)
-                show_help
-                exit 0
-                ;;
-            *)
-                echo -e "${RED}未知选项：$1${NC}"
-                show_help
-                exit 1
-                ;;
-        esac
     done
-    
-    # 检查环境
-    check_node
-    echo ""
-    
-    # 检查 Playwright 是否安装
-    if ! npm list @playwright/test &> /dev/null; then
-        echo -e "${YELLOW}Playwright 未安装，正在安装...${NC}"
-        install_playwright
-        echo ""
-    fi
-    
-    # 检查服务
-    check_frontend_server
-    check_backend_server
-    echo ""
-    
-    # 运行测试
-    run_tests "$extra_args"
-    local test_result=$?
-    
-    # 打开报告
-    if [ "$show_report" = true ]; then
-        echo ""
-        echo -e "${YELLOW}正在打开测试报告...${NC}"
-        if command -v xdg-open &> /dev/null; then
-            xdg-open "$SCRIPT_DIR/playwright-report/index.html"
-        elif command -v open &> /dev/null; then
-            open "$SCRIPT_DIR/playwright-report/index.html"
-        else
-            echo "请手动打开：file://$SCRIPT_DIR/playwright-report/index.html"
-        fi
-    fi
-    
-    exit $test_result
+    echo -e "${RED}✗ 静态服务器启动超时${NC}"
+    tail -20 /tmp/e2e_static_srv.log
+    exit 1
 }
 
-# 执行主函数
-main "$@"
+# --- parse args ---
+SKIP_BUILD=false
+HEADED=false
+SHOW_REPORT=false
+EXTRA_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --skip-build) SKIP_BUILD=true; shift ;;
+        --headed)     HEADED=true; shift ;;
+        --report)     SHOW_REPORT=true; shift ;;
+        --install)    install_playwright; exit 0 ;;
+        --help|-h)    show_help; exit 0 ;;
+        --)           shift; EXTRA_ARGS+=("$@"); break ;;
+        *)            echo -e "${RED}未知选项: $1${NC}"; show_help; exit 1 ;;
+    esac
+done
+
+# --- run ---
+echo "============================================"
+echo "  减肥 AI 助理 — E2E 测试"
+echo "============================================"
+echo -e "  前端:  ${BLUE}${FRONTEND_URL}${NC}"
+echo -e "  后端:  ${BLUE}${BACKEND_URL}${NC}"
+echo ""
+
+check_backend
+
+if [ "$SKIP_BUILD" = false ]; then
+    build_web
+else
+    echo -e "${YELLOW}⏭  跳过 flutter build web${NC}"
+fi
+
+ensure_static_server
+
+echo ""
+echo -e "${YELLOW}🧪 跑 Playwright 测试...${NC}"
+PW_ARGS=(--project=chromium --reporter=list)
+[ "$HEADED" = true ] && PW_ARGS+=(--headed)
+if [ ${#EXTRA_ARGS[@]} -eq 0 ]; then
+    PW_ARGS+=("${TEST_FILES[@]}")
+else
+    PW_ARGS+=("${EXTRA_ARGS[@]}")
+fi
+
+BASE_URL="${FRONTEND_URL}" API_BASE_URL="${BACKEND_URL}" \
+    npx playwright test "${PW_ARGS[@]}"
+TEST_EXIT=$?
+
+echo ""
+if [ "$SHOW_REPORT" = true ]; then
+    echo -e "${YELLOW}📊 打开测试报告...${NC}"
+    (command -v xdg-open > /dev/null && xdg-open playwright-report/index.html) \
+      || (command -v open > /dev/null && open playwright-report/index.html) \
+      || echo "  手动打开: file://${SCRIPT_DIR}/playwright-report/index.html"
+fi
+
+exit $TEST_EXIT
