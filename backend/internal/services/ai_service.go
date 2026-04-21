@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -309,55 +310,131 @@ func (s *AIService) Chat(req *ChatRequest) (*ChatResponse, error) {
 	if len(req.Messages) == 0 {
 		return nil, errors.New("messages cannot be empty")
 	}
-
-	// 先把本轮用户问题入库（messages 数组的最后一条 user 消息就是新问题）
-	if last := req.Messages[len(req.Messages)-1]; last.Role == "user" && last.Content != "" {
-		userMsg := &models.AIChatMessage{
-			UserID:   req.UserID,
-			Role:     "user",
-			Content:  last.Content,
-			ThreadID: req.ThreadID,
-		}
-		if err := s.db.Create(userMsg).Error; err != nil {
-			s.logger.Error("failed to save user message", zap.Error(err))
-			// 继续，不阻断聊天
-		}
+	// 只关心本轮的 user message（客户端可能重复发全量历史，但后端自己从 DB 拼更可靠）
+	last := req.Messages[len(req.Messages)-1]
+	if last.Role != "user" || last.Content == "" {
+		return nil, errors.New("last message must be non-empty user message")
 	}
 
-	var assistantContent string
+	// [1] 存入用户消息
+	userMsg := &models.AIChatMessage{
+		UserID:   req.UserID,
+		Role:     "user",
+		Content:  last.Content,
+		ThreadID: req.ThreadID,
+	}
+	if err := s.db.Create(userMsg).Error; err != nil {
+		s.logger.Error("failed to save user message", zap.Error(err))
+	} else {
+		s.embedMessageAsync(userMsg.ID, userMsg.Content)
+	}
+
+	// [2] mock 模式早退
 	if s.llmAPIKey == "" {
 		if !s.allowMock {
 			return nil, errLLMNotConfigured
 		}
 		s.logger.Warn("LLM API not configured — chat 返回 mock（debug 模式）")
-		assistantContent = "你好！我是你的 AI 减肥助手。有什么我可以帮助你的吗？"
-	} else {
-		resp, err := s.callLLM(req.Messages)
-		if err != nil {
-			s.logger.Error("LLM API call failed", zap.Error(err))
-			return nil, err
-		}
-		assistantContent = resp.Content
+		return s.saveAssistantReply(req.UserID, req.ThreadID, "你好！我是你的 AI 减肥助手。有什么我可以帮助你的吗？")
 	}
 
-	dbMessage := &models.AIChatMessage{
-		UserID:   req.UserID,
-		Role:     "assistant",
-		Content:  assistantContent,
-		ThreadID: req.ThreadID,
-	}
-
-	if err := s.db.Create(dbMessage).Error; err != nil {
-		s.logger.Error("failed to save assistant message", zap.Error(err))
+	// [3] 组装完整上下文
+	messages, err := s.assembleChatMessages(req.UserID, req.ThreadID, last.Content)
+	if err != nil {
+		s.logger.Error("assemble chat context failed", zap.Error(err))
 		return nil, err
 	}
 
+	// [4] 调 LLM
+	resp, err := s.callLLM(messages)
+	if err != nil {
+		s.logger.Error("LLM API call failed", zap.Error(err))
+		return nil, err
+	}
+
+	// [5] 存 assistant 回复 + 触发后台任务
+	out, err := s.saveAssistantReply(req.UserID, req.ThreadID, resp.Content)
+	if err != nil {
+		return nil, err
+	}
+	go s.maybeTriggerBackgroundTasks(req.UserID, req.ThreadID)
+	return out, nil
+}
+
+// saveAssistantReply: 持久化助手消息，异步写 embedding，返回 response。
+func (s *AIService) saveAssistantReply(userID uint, threadID, content string) (*ChatResponse, error) {
+	m := &models.AIChatMessage{
+		UserID:   userID,
+		Role:     "assistant",
+		Content:  content,
+		ThreadID: threadID,
+	}
+	if err := s.db.Create(m).Error; err != nil {
+		s.logger.Error("failed to save assistant message", zap.Error(err))
+		return nil, err
+	}
+	s.embedMessageAsync(m.ID, m.Content)
 	return &ChatResponse{
-		MessageID: dbMessage.ID,
+		MessageID: m.ID,
 		Role:      "assistant",
-		Content:   dbMessage.Content,
-		ThreadID:  req.ThreadID,
+		Content:   m.Content,
+		ThreadID:  threadID,
 	}, nil
+}
+
+// assembleChatMessages: 把记忆的各层拼成给 LLM 的 messages 数组。
+func (s *AIService) assembleChatMessages(userID uint, threadID, query string) ([]ChatMessage, error) {
+	messages := []ChatMessage{
+		{Role: "system", Content: s.buildSystemPrompt(userID, threadID)},
+	}
+
+	// 滑窗（含刚插入的 user 消息，要剔除——我们自己会把 query 放在末尾）
+	recent := s.loadRecentMessages(userID, threadID, recentWindowSize+1) // +1 留给末尾 user
+	// 丢掉末尾刚保存的那条（已经在 query 里）
+	if n := len(recent); n > 0 && recent[n-1].Role == "user" && recent[n-1].Content == query {
+		recent = recent[:n-1]
+	}
+
+	// RAG 检索：排除掉滑窗里已有的 msg id，避免双份
+	excludeIDs := make([]uint, 0, len(recent))
+	for _, m := range recent {
+		excludeIDs = append(excludeIDs, m.ID)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	hits, err := s.searchRelevantMessages(ctx, userID, query, excludeIDs, retrievalTopK)
+	if err != nil {
+		// 检索失败不致命，只打日志
+		s.logger.Warn("RAG search failed", zap.Error(err))
+	}
+	if len(hits) > 0 {
+		var sb strings.Builder
+		sb.WriteString("以下是从过往对话中检索到的相关片段，供参考：\n")
+		for _, h := range hits {
+			sb.WriteString(fmt.Sprintf("- [%s · 相似度 %.2f] %s: %s\n",
+				h.Msg.CreatedAt.Format("2006-01-02"),
+				h.Similarity,
+				h.Msg.Role, truncate(h.Msg.Content, 120)))
+		}
+		messages = append(messages, ChatMessage{Role: "system", Content: sb.String()})
+	}
+
+	// 最近原文
+	for _, m := range recent {
+		messages = append(messages, ChatMessage{Role: m.Role, Content: m.Content})
+	}
+
+	// 当前问题
+	messages = append(messages, ChatMessage{Role: "user", Content: query})
+	return messages, nil
+}
+
+func truncate(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
 }
 
 func (s *AIService) callLLM(messages []ChatMessage) (*ChatMessage, error) {
@@ -366,18 +443,22 @@ func (s *AIService) callLLM(messages []ChatMessage) (*ChatMessage, error) {
 		apiURL = defaultGeminiURL
 	}
 
-	// 构建请求内容
+	// 构建请求内容：Gemini 的 system 通过专门的 systemInstruction 字段传入，
+	// contents 里 role 只能是 "user" / "model"。
 	var contents []map[string]interface{}
+	var systemTexts []string
 	for _, msg := range messages {
+		if msg.Role == "system" {
+			systemTexts = append(systemTexts, msg.Content)
+			continue
+		}
 		role := "user"
 		if msg.Role == "assistant" {
 			role = "model"
 		}
 		contents = append(contents, map[string]interface{}{
-			"role": role,
-			"parts": []map[string]string{
-				{"text": msg.Content},
-			},
+			"role":  role,
+			"parts": []map[string]string{{"text": msg.Content}},
 		})
 	}
 
@@ -387,6 +468,11 @@ func (s *AIService) callLLM(messages []ChatMessage) (*ChatMessage, error) {
 			"temperature":     0.7,
 			"maxOutputTokens": 4096,
 		},
+	}
+	if len(systemTexts) > 0 {
+		payload["systemInstruction"] = map[string]interface{}{
+			"parts": []map[string]string{{"text": strings.Join(systemTexts, "\n\n")}},
+		}
 	}
 
 	jsonData, err := json.Marshal(payload)

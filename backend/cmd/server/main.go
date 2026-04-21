@@ -43,6 +43,7 @@ func main() {
 		&models.WeightRecord{},
 		&models.AIChatMessage{},
 		&models.AIChatThread{},
+		&models.UserFact{},
 		&models.DailySummary{},
 		&models.SMSCode{},
 		&models.UserAccount{},
