@@ -1,9 +1,13 @@
 package middleware
 
 import (
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"time"
 )
 
 // CORS returns a middleware that handles Cross-Origin Resource Sharing
@@ -44,6 +48,32 @@ func Logger(logger *zap.Logger) gin.HandlerFunc {
 			zap.String("user-agent", c.Request.UserAgent()),
 			zap.Duration("latency", latency),
 		)
+	}
+}
+
+// AuthRequired 解析 Authorization: Bearer <token>，把 user_id 塞进 gin.Context。
+// token 格式来自 auth_service.PhoneLogin："token_<userID>_<yyyymmddHHMMSS>"。
+// 后续要换成 JWT 时，只改这里即可。
+func AuthRequired() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		h := c.GetHeader("Authorization")
+		if !strings.HasPrefix(h, "Bearer ") {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "未登录"})
+			return
+		}
+		token := strings.TrimPrefix(h, "Bearer ")
+		parts := strings.SplitN(token, "_", 3)
+		if len(parts) < 3 || parts[0] != "token" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token 格式错误"})
+			return
+		}
+		id, err := strconv.ParseUint(parts[1], 10, 32)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token 格式错误"})
+			return
+		}
+		c.Set("user_id", uint(id))
+		c.Next()
 	}
 }
 

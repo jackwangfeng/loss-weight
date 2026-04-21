@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/your-org/loss-weight/backend/internal/config"
 	"github.com/your-org/loss-weight/backend/internal/handlers"
+	"github.com/your-org/loss-weight/backend/internal/middleware"
 	"github.com/your-org/loss-weight/backend/internal/services"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -79,9 +80,14 @@ func SetupAuthRoutes(v1 *gin.RouterGroup, db *gorm.DB, logger *zap.Logger) {
 
 	auth := v1.Group("/auth")
 	{
+		// 公开
 		auth.POST("/sms/send", authHandler.SendSMS)
 		auth.POST("/sms/login", authHandler.PhoneLogin)
-		auth.GET("/me", authHandler.GetCurrentUser)
-		auth.POST("/logout", authHandler.Logout)
+
+		// 需鉴权
+		protected := auth.Group("")
+		protected.Use(middleware.AuthRequired())
+		protected.GET("/me", authHandler.GetCurrentUser)
+		protected.POST("/logout", authHandler.Logout)
 	}
 }
