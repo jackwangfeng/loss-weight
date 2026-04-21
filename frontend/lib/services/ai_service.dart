@@ -148,6 +148,16 @@ class AIService {
     }
   }
 
+  /// 重命名对话线程
+  Future<void> renameThread(int id, String title) async {
+    await _apiService.put('/ai/chat/thread/$id', {'title': title});
+  }
+
+  /// 删除对话线程（连同其所有消息）
+  Future<void> deleteThread(int id) async {
+    await _apiService.delete('/ai/chat/thread/$id');
+  }
+
   /// 食物图片识别（image_url 支持 data: URL 或 http(s) URL）
   /// 返回：{food_name, calories, protein, carbohydrates, fat, fiber, confidence}
   Future<Map<String, dynamic>> recognizeFood({

@@ -280,6 +280,41 @@ func (h *AIHandler) CreateThread(c *gin.Context) {
 	c.JSON(http.StatusCreated, thread)
 }
 
+func (h *AIHandler) UpdateThread(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的 id"})
+		return
+	}
+	var req struct {
+		Title string `json:"title"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.service.UpdateChatThreadTitle(uint(id), req.Title); err != nil {
+		h.logger.Error("update thread failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "已更新"})
+}
+
+func (h *AIHandler) DeleteThread(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的 id"})
+		return
+	}
+	if err := h.service.DeleteChatThread(uint(id)); err != nil {
+		h.logger.Error("delete thread failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "已删除"})
+}
+
 func (h *AIHandler) GetUserThreads(c *gin.Context) {
 	userIDStr := c.Query("user_id")
 	if userIDStr == "" {

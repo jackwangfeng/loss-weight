@@ -21,6 +21,7 @@ class _AISScreenState extends State<AIScreen> {
   final ScrollController _scrollController = ScrollController();
   
   List<AIChatMessage> _messages = [];
+  List<AIChatThread> _threads = [];
   AIChatThread? _currentThread;
   bool _isLoading = false;
   bool _isTyping = false;
@@ -69,6 +70,7 @@ class _AISScreenState extends State<AIScreen> {
       }
 
       final threads = await _aiService.getUserThreads(userId);
+      _threads = threads;
       if (threads.isNotEmpty) {
         _currentThread = threads.first;
         await _loadMessages();
@@ -278,6 +280,8 @@ class _AISScreenState extends State<AIScreen> {
             }
           });
           _scrollToBottom();
+          // 刷新 drawer 里线程列表（更新标题/时间/消息数）
+          _refreshThreads(userId);
           break;
         }
       }
@@ -346,29 +350,18 @@ class _AISScreenState extends State<AIScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('AI 助手'),
+        title: Text(_currentThread?.title.isNotEmpty == true
+            ? _currentThread!.title
+            : 'AI 助手'),
         actions: [
           IconButton(
             icon: const Icon(Icons.add_comment),
-            onPressed: () async {
-              await _createNewThread();
-              setState(() {
-                _messages.clear();
-              });
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('已创建新对话')),
-                );
-              }
-            },
+            onPressed: _startNewThread,
             tooltip: '新建对话',
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadMessages,
           ),
         ],
       ),
+      drawer: _buildThreadDrawer(),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Column(
@@ -416,6 +409,260 @@ class _AISScreenState extends State<AIScreen> {
               ],
             ),
     );
+  }
+
+  Future<void> _startNewThread() async {
+    await _createNewThread();
+    if (!mounted) return;
+    setState(() {
+      _messages.clear();
+    });
+    // 主动 greet + 刷新 thread 列表
+    final user = context.read<UserProvider>().currentUser;
+    if (user != null) {
+      _injectGreeting(user.id);
+      _refreshThreads(user.id);
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已创建新对话')),
+      );
+    }
+  }
+
+  Future<void> _refreshThreads(int userId) async {
+    try {
+      final threads = await _aiService.getUserThreads(userId);
+      if (!mounted) return;
+      setState(() => _threads = threads);
+    } catch (_) {
+      // 静默
+    }
+  }
+
+  Future<void> _switchThread(AIChatThread t) async {
+    if (_currentThread?.id == t.id) {
+      Navigator.pop(context); // 关 drawer
+      return;
+    }
+    setState(() {
+      _currentThread = t;
+      _messages = [];
+      _isLoading = true;
+    });
+    Navigator.pop(context);
+    await _loadMessages();
+    if (mounted) setState(() => _isLoading = false);
+  }
+
+  Future<void> _confirmDeleteThread(AIChatThread t) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除这个对话？'),
+        content: Text('"${t.title}" 及其全部消息会被删除，此操作不可撤销。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await _aiService.deleteThread(t.id);
+      final user = context.read<UserProvider>().currentUser;
+      if (user == null) return;
+      final threads = await _aiService.getUserThreads(user.id);
+      if (!mounted) return;
+      setState(() {
+        _threads = threads;
+        if (_currentThread?.id == t.id) {
+          // 当前选中被删了：切到列表第一个或新建
+          if (threads.isNotEmpty) {
+            _currentThread = threads.first;
+            _messages = [];
+            _loadMessages();
+          } else {
+            _currentThread = null;
+            _messages = [];
+            _createNewThread().then((_) {
+              if (mounted) setState(() {});
+            });
+          }
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('删除失败：$e')),
+        );
+      }
+    }
+  }
+
+  Widget _buildThreadDrawer() {
+    return Drawer(
+      child: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 4),
+              child: Row(
+                children: [
+                  Icon(Icons.forum_outlined, color: Colors.green[800]),
+                  const SizedBox(width: 8),
+                  const Text('我的对话',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.add),
+                    tooltip: '新建对话',
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _startNewThread();
+                    },
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: _threads.isEmpty
+                  ? Center(
+                      child: Text('还没有对话',
+                          style: TextStyle(color: Colors.grey[600])),
+                    )
+                  : ListView.separated(
+                      itemCount: _threads.length,
+                      separatorBuilder: (_, __) =>
+                          const Divider(height: 1, indent: 16, endIndent: 16),
+                      itemBuilder: (ctx, i) {
+                        final t = _threads[i];
+                        final isActive = _currentThread?.id == t.id;
+                        return ListTile(
+                          selected: isActive,
+                          selectedTileColor: Colors.green[50],
+                          leading: Icon(
+                            Icons.chat_bubble_outline,
+                            color: isActive ? Colors.green[800] : Colors.grey[600],
+                          ),
+                          title: Text(
+                            t.title.isEmpty ? '新对话' : t.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontWeight:
+                                  isActive ? FontWeight.w600 : FontWeight.normal,
+                            ),
+                          ),
+                          subtitle: Text(
+                            _threadSubtitle(t),
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.more_vert, size: 20),
+                            onPressed: () => _showThreadMenu(t),
+                          ),
+                          onTap: () => _switchThread(t),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _threadSubtitle(AIChatThread t) {
+    final d = t.updatedAt;
+    final now = DateTime.now();
+    final diff = now.difference(d);
+    String when;
+    if (diff.inMinutes < 60) {
+      when = '${diff.inMinutes} 分钟前';
+    } else if (diff.inHours < 24 && now.day == d.day) {
+      when = '今天 ${d.hour.toString().padLeft(2, "0")}:${d.minute.toString().padLeft(2, "0")}';
+    } else if (diff.inDays < 7) {
+      when = '${diff.inDays} 天前';
+    } else {
+      when = '${d.month}/${d.day}';
+    }
+    return t.messageCount > 0 ? '$when · ${t.messageCount} 条' : when;
+  }
+
+  void _showThreadMenu(AIChatThread t) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.drive_file_rename_outline),
+              title: const Text('重命名'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await _renameThread(t);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              title: const Text('删除', style: TextStyle(color: Colors.red)),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await _confirmDeleteThread(t);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _renameThread(AIChatThread t) async {
+    final ctrl = TextEditingController(text: t.title);
+    final newTitle = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('重命名'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: '对话名称'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (newTitle == null || newTitle.isEmpty || newTitle == t.title) return;
+    try {
+      await _aiService.renameThread(t.id, newTitle);
+      final user = context.read<UserProvider>().currentUser;
+      if (user != null) await _refreshThreads(user.id);
+      if (!mounted) return;
+      if (_currentThread?.id == t.id) {
+        // 刷新 AppBar 标题
+        setState(() {
+          final idx = _threads.indexWhere((x) => x.id == t.id);
+          _currentThread = idx >= 0 ? _threads[idx] : _currentThread;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('重命名失败：$e')),
+        );
+      }
+    }
   }
 
   Widget _buildTypingIndicator() {

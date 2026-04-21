@@ -639,6 +639,9 @@ func (s *AIService) Chat(req *ChatRequest) (*ChatResponse, error) {
 		s.embedMessageAsync(userMsg.ID, userMsg.Content)
 	}
 
+	// 自动设标题：如果 thread 标题是空或默认值，用第一条消息当标题（截 20 字）
+	s.maybeAutoTitleThread(req.ThreadID, last.Content)
+
 	// [2] mock 模式早退
 	if s.llmAPIKey == "" {
 		if !s.allowMock {
@@ -973,6 +976,7 @@ func (s *AIService) ChatStream(ctx context.Context, req *ChatRequest) (<-chan St
 	} else {
 		s.embedMessageAsync(userMsg.ID, userMsg.Content)
 	}
+	s.maybeAutoTitleThread(req.ThreadID, last.Content)
 
 	// mock 降级
 	if s.llmAPIKey == "" {
@@ -1158,6 +1162,46 @@ func (s *AIService) CreateChatThread(userID uint, title string) (*models.AIChatT
 	}
 
 	return thread, nil
+}
+
+// UpdateChatThreadTitle 允许客户端重命名线程
+func (s *AIService) UpdateChatThreadTitle(id uint, title string) error {
+	return s.db.Model(&models.AIChatThread{}).Where("id = ?", id).
+		Update("title", title).Error
+}
+
+// DeleteChatThread 删除线程 + 其下所有消息
+func (s *AIService) DeleteChatThread(id uint) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		threadIDStr := fmt.Sprintf("%d", id)
+		if err := tx.Where("thread_id = ?", threadIDStr).
+			Delete(&models.AIChatMessage{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&models.AIChatThread{}, id).Error
+	})
+}
+
+// maybeAutoTitleThread：thread 首条消息时，用消息内容生成标题。
+// 只在 title 为空或等于默认值"新对话"时替换。
+func (s *AIService) maybeAutoTitleThread(threadID, firstUserMsg string) {
+	if threadID == "" || firstUserMsg == "" {
+		return
+	}
+	var t models.AIChatThread
+	if err := s.db.Where("id = ? OR title = ?", threadID, threadID).
+		First(&t).Error; err != nil {
+		return
+	}
+	if t.Title != "" && t.Title != "新对话" {
+		return
+	}
+	title := strings.ReplaceAll(firstUserMsg, "\n", " ")
+	r := []rune(title)
+	if len(r) > 20 {
+		title = string(r[:20]) + "…"
+	}
+	s.db.Model(&t).Update("title", title)
 }
 
 func (s *AIService) GetUserThreads(userID uint) ([]models.AIChatThread, error) {

@@ -34,6 +34,7 @@ class AIChatThread {
   final int id;
   final int userId;
   final String title;
+  final int messageCount;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -41,6 +42,7 @@ class AIChatThread {
     required this.id,
     required this.userId,
     this.title = '',
+    this.messageCount = 0,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -50,6 +52,7 @@ class AIChatThread {
       id: json['id'] ?? 0,
       userId: json['user_id'] ?? 0,
       title: json['title'] ?? '',
+      messageCount: json['message_count'] ?? 0,
       createdAt: DateTime.parse(json['created_at']),
       updatedAt: DateTime.parse(json['updated_at']),
     );
