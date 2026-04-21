@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:dio/dio.dart';
+import 'package:http/http.dart' as http;
 import '../models/ai_chat.dart';
 import '../models/user_fact.dart';
 import 'api_service.dart';
+import 'sse_client.dart';
 
 class AIService {
   final ApiService _apiService = ApiService();
@@ -31,57 +32,60 @@ class AIService {
 
   /// 流式 AI 聊天。Stream 里每一项是一帧 {delta?, done?, message_id?, error?}。
   /// Stream 结束时（done=true）可以从最后一帧拿 message_id。
+  ///
+  /// 实现：Web 走原生 fetch（fetch_client），其他平台走 http.Client。
+  /// Dio 在 Web 会 buffer 整个响应，无法真流式，故此处不使用 Dio。
   Stream<Map<String, dynamic>> chatStream({
     required int userId,
     required String message,
     String? threadId,
   }) async* {
-    final dio = Dio(BaseOptions(
-      baseUrl: _apiService.baseUrl,
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'text/event-stream',
-        if (_apiService.token != null) 'Authorization': 'Bearer ${_apiService.token}',
-      },
-    ));
-
-    final response = await dio.post<ResponseBody>(
-      '/ai/chat/stream',
-      data: {
+    final client = createStreamingClient();
+    try {
+      final uri = Uri.parse('${_apiService.baseUrl}/ai/chat/stream');
+      final req = http.Request('POST', uri);
+      req.headers['Content-Type'] = 'application/json';
+      req.headers['Accept'] = 'text/event-stream';
+      if (_apiService.token != null) {
+        req.headers['Authorization'] = 'Bearer ${_apiService.token}';
+      }
+      req.body = json.encode({
         'user_id': userId,
         'messages': [
           {'role': 'user', 'content': message},
         ],
         if (threadId != null) 'thread_id': threadId,
-      },
-      options: Options(
-        responseType: ResponseType.stream,
-      ),
-    );
+      });
 
-    final body = response.data;
-    if (body == null) return;
+      final resp = await client.send(req);
+      if (resp.statusCode != 200) {
+        final body = await resp.stream.bytesToString();
+        throw Exception('AI stream HTTP ${resp.statusCode}: $body');
+      }
 
-    // SSE 逐行解析：每帧 `data: {...}\n\n`
-    String buffer = '';
-    await for (final bytes in body.stream) {
-      buffer += utf8.decode(bytes, allowMalformed: true);
-      while (true) {
-        final idx = buffer.indexOf('\n\n');
-        if (idx < 0) break;
-        final raw = buffer.substring(0, idx);
-        buffer = buffer.substring(idx + 2);
-        for (final line in raw.split('\n')) {
-          if (!line.startsWith('data: ')) continue;
-          final data = line.substring(6);
-          if (data.isEmpty) continue;
-          try {
-            yield json.decode(data) as Map<String, dynamic>;
-          } catch (_) {
-            // 忽略坏帧
+      // SSE 逐行解析：每帧 `data: {...}\n\n`
+      String buffer = '';
+      await for (final bytes in resp.stream) {
+        buffer += utf8.decode(bytes, allowMalformed: true);
+        while (true) {
+          final idx = buffer.indexOf('\n\n');
+          if (idx < 0) break;
+          final raw = buffer.substring(0, idx);
+          buffer = buffer.substring(idx + 2);
+          for (final line in raw.split('\n')) {
+            if (!line.startsWith('data: ')) continue;
+            final data = line.substring(6);
+            if (data.isEmpty) continue;
+            try {
+              yield json.decode(data) as Map<String, dynamic>;
+            } catch (_) {
+              // 忽略坏帧
+            }
           }
         }
       }
+    } finally {
+      client.close();
     }
   }
 

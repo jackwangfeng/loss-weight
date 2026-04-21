@@ -54,6 +54,9 @@ dependencies:
   # Markdown 渲染（AI 回复里的 **加粗**、列表、代码块）
   flutter_markdown: ^0.7.1
 
+  # Web 端流式 HTTP（Dio 在 Web 上会 buffer 整个响应，用 fetch_client 绕过）
+  fetch_client: ^1.1.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
