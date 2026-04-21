@@ -1,5 +1,8 @@
 # 减肥AI助理 - MVP PRD
 
+> ⚠️ **本文档定性为产品设计文档**，不用来描述当前代码实际能力。
+> 功能现状以 [../README.md](../README.md) 和 [../backend/README.md](../backend/README.md) 为准。
+
 ## 1. 产品概述
 
 ### 1.1 产品定位

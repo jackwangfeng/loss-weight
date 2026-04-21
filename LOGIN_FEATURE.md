@@ -1,5 +1,7 @@
 # 手机登录功能完成总结
 
+> ⚠️ **历史快照**。早期登录功能完成记录。登录流程的最新代码见 `backend/internal/services/auth_service.go` 和 `frontend/lib/screens/login_screen.dart`。
+
 ## ✅ 功能概述
 
 已完成手机短信验证码登录功能的完整实现，包括后端 API 和前端页面。

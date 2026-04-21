@@ -1,5 +1,7 @@
 # 后端技术栈迁移完成 - Python → Go
 
+> ⚠️ **历史文档**。记录了从 Python FastAPI 迁移到 Go Gin 的过程；迁移本身已完成，这里保留仅作参考。后端现状见 [backend/README.md](backend/README.md)。
+
 > ✅ 后端已成功从 Python FastAPI 迁移到 Go Gin
 
 ---

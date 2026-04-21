@@ -1,5 +1,7 @@
 # 项目骨架生成完成
 
+> ⚠️ **历史快照**。仅记录项目初创时的骨架。当前结构和启动方式见 [README.md](README.md)、[backend/README.md](backend/README.md)、[frontend/README.md](frontend/README.md)。
+
 > ✅ 项目基础结构已创建完成
 
 ---

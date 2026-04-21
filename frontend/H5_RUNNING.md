@@ -1,5 +1,7 @@
 # 🎉 前端 H5 运行成功！
 
+> ⚠️ **已被取代**。Web 运行方式以 [README.md](README.md) 为准——**不要用** `flutter run -d web-server`（DDC bundle 在 headless 里不稳）；改用 `flutter build web --release` + `node tests/static_server.js`。
+
 ## ✅ 服务状态
 
 **前端 H5 已成功启动并运行！**

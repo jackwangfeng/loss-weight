@@ -1,5 +1,7 @@
 # Swagger API 文档生成完成
 
+> ⚠️ **历史快照**。最新的路由清单以 `backend/internal/routes/routes.go` 为准，手工测试示例见 [API_TESTS.md](API_TESTS.md)。Swagger YAML（`backend/api/swagger.yaml`）可能未随代码更新。
+
 > ✅ 已生成完整的 OpenAPI 3.0 规范文档
 
 ---

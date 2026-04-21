@@ -1,5 +1,7 @@
 # Playwright 测试使用指南
 
+> ⚠️ **已被取代**。最新运行方式见 [tests/README.md](tests/README.md)。
+
 ## 📦 已创建的文件
 
 ```

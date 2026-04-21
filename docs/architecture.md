@@ -1,6 +1,11 @@
 # 减肥AI助理 - 技术架构设计
 
-> 本文档描述MVP版本的技术架构、技术选型、数据库设计和API规范
+> 本文档描述MVP版本的技术架构、技术选型、数据库设计和API规范。
+>
+> ⚠️ **部分内容偏向愿景**：文档中提到 Nginx/Kong 网关、PostgreSQL 主库、
+> Redis、Chroma 向量库、OSS、通义千问/百度AI 等，**实际实现更简洁**——
+> SQLite + Gemini 2.5-flash + 无 Redis/Chroma/OSS。当前端点和数据模型以
+> [../backend/README.md](../backend/README.md) 为准。
 
 ---
 

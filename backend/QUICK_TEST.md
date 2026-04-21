@@ -1,5 +1,8 @@
 # 后端 API 快速测试指南
 
+> ⚠️ **已被取代**。最新的手工测试清单见 [../API_TESTS.md](../API_TESTS.md)，  
+> 启动方式见 [README.md](README.md)。
+
 ## 🚀 启动服务
 
 ```bash

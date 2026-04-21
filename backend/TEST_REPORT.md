@@ -1,5 +1,7 @@
 # API 测试报告
 
+> ⚠️ **历史快照**。某一次测试跑完的结果。最新自动化测试用 `frontend/tests/backend_api_test.js`（Playwright 14 条），见 [../frontend/tests/README.md](../frontend/tests/README.md)。
+
 ## 📊 测试结果概览
 
 **测试时间：** 2026-04-06  

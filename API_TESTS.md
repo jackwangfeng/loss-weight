@@ -1,288 +1,224 @@
-# API 接口测试脚本生成完成
+# API 手工测试清单
 
-> ✅ 已创建完整的 API 接口测试脚本
-
----
-
-## 📊 完成情况
-
-### 生成的文件
-
-| 文件 | 说明 | 类型 |
-|------|------|------|
-| `backend/tests/run_api_tests.sh` | Bash 测试脚本 | 可执行脚本 |
-| `backend/tests/api_test.go` | Go 测试代码 | 单元测试 |
-| `backend/tests/README.md` | 测试说明文档 | 文档 |
+> 本文档以**代码实际端点**为准。自动化测试见 `frontend/tests/backend_api_test.js`（14 条串行端到端，随 Playwright 跑）。
 
 ---
 
-## 🚀 快速开始
-
-### 方式 1：Bash 脚本（简单快捷）
-
-```bash
-# 1. 启动后端服务
-cd backend
-go run cmd/server/main.go
-
-# 2. 在另一个终端运行测试
-./tests/run_api_tests.sh
-
-# 或指定 API 地址
-TEST_BASE_URL=http://localhost:8000/v1 ./tests/run_api_tests.sh
-```
-
-### 方式 2：Go 测试
+## 🚀 起后端
 
 ```bash
 cd backend
-
-# 运行测试
-go test ./tests -v
-
-# 生成覆盖率报告
-go test ./tests -coverprofile=coverage.out
+source /usr/local/proxy1.sh                     # 访问 Gemini 需要代理的话
+set -a && source .env && set +a                 # 加载 GEMINI_API_KEY
+SKIP_SMS_VERIFY=true go run cmd/server/main.go -config config.gemini.yaml
 ```
+
+无 key 模式：`make local`（用 `config.test.yaml`，AI 接口走 mock）。
 
 ---
 
-## 📋 测试用例总览
+## 📋 端点速查
 
-### 4 大模块，10 个测试用例
+### 无需鉴权
 
-#### 1. 用户模块（3 个）
-- ✅ 创建用户档案
-- ✅ 获取用户档案
-- ✅ 更新用户档案
-
-#### 2. 饮食模块（3 个）
-- ✅ 添加饮食记录
-- ✅ 获取今日饮食汇总
-- ✅ 获取饮食记录列表
-
-#### 3. 体重模块（2 个）
-- ✅ 记录体重
-- ✅ 获取体重记录列表
-
-#### 4. AI 模块（2 个）
-- ✅ 获取 AI 鼓励
-- ✅ AI 对话
-
----
-
-## 📊 测试输出示例
-
-```
-========================================
-🚀 减肥 AI 助理 - API 接口测试
-========================================
-
-测试配置:
-  Base URL: http://localhost:8000/v1
-  超时时间：30s
-
-📋 测试用户模块
-----------------------------------------
-[✅ PASS] 创建用户档案：UserID=1001
-[✅ PASS] 获取用户档案：状态码=200
-[✅ PASS] 更新用户档案：状态码=200
-
-🍽️  测试饮食模块
-----------------------------------------
-[✅ PASS] 添加饮食记录：状态码=200
-[✅ PASS] 获取今日饮食汇总：状态码=200
-[✅ PASS] 获取饮食记录列表：状态码=200
-
-⚖️  测试体重模块
-----------------------------------------
-[✅ PASS] 记录体重：状态码=200
-[✅ PASS] 获取体重记录列表：状态码=200
-
-🤖 测试 AI 模块
-----------------------------------------
-[✅ PASS] 获取 AI 鼓励：消息：记录得真及时！👍
-[✅ PASS] AI 对话：回复：抱抱～偶尔多吃很正常啦
-
-========================================
-✅ 所有测试完成！
-========================================
-```
-
----
-
-## 🔧 测试特性
-
-### 1. 自动 Token 管理
-
-- 创建用户后自动获取 token
-- 后续请求自动携带 token
-- 无需手动配置
-
-### 2. 彩色输出
-
-- ✅ 绿色：测试通过
-- ❌ 红色：测试失败
-- 📋 黄色：模块标题
-
-### 3. 详细日志
-
-- 每个测试用例都有状态输出
-- 失败时显示详细错误信息
-- 最后输出测试数据摘要
-
-### 4. 错误处理
-
-- 自动检测 HTTP 状态码
-- 解析 JSON 响应
-- 友好的错误提示
-
----
-
-## 📝 测试数据
-
-### 默认测试用户
-
-```json
-{
-  "nickname": "测试用户",
-  "gender": "male",
-  "age": 28,
-  "height": 175,
-  "current_weight": 75.0,
-  "target_weight": 65.0,
-  "target_date": "2026-08-01"
-}
-```
-
-### 测试饮食记录
-
-```json
-{
-  "food_name": "宫保鸡丁",
-  "calories": 520,
-  "protein": 25,
-  "fat": 30,
-  "carbs": 15,
-  "portion": 200,
-  "unit": "g",
-  "meal_type": "lunch",
-  "record_type": "manual"
-}
-```
-
-### 测试体重记录
-
-```json
-{
-  "weight": 72.5,
-  "note": "测试记录",
-  "recorded_at": "2026-04-05T08:00:00Z"
-}
-```
-
----
-
-## 🔍 故障排查
-
-### 问题 1：连接被拒绝
-
-**错误：** `curl: (7) Failed to connect to localhost port 8000`
-
-**解决：**
 ```bash
-# 确保后端服务正在运行
+# 健康检查
+curl http://localhost:8000/health
+
+# 发送短信（SKIP_SMS_VERIFY=true 下立即成功）
+curl -X POST http://localhost:8000/v1/auth/sms/send \
+  -H "Content-Type: application/json" \
+  -d '{"phone":"13800138000","purpose":"login"}'
+
+# 登录（test 模式下 code 固定 123456）
+curl -X POST http://localhost:8000/v1/auth/sms/login \
+  -H "Content-Type: application/json" \
+  -d '{"phone":"13800138000","code":"123456"}'
+# → {"token":"token_1_20260422...", "user_id":1, "is_new_user":false, "account":{...}}
+```
+
+拿到 token 后导出：
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8000/v1/auth/sms/login \
+  -H "Content-Type: application/json" \
+  -d '{"phone":"13800138000","code":"123456"}' | jq -r .token)
+```
+
+### 需要鉴权（`Authorization: Bearer $TOKEN`）
+
+```bash
+# 当前用户
+curl http://localhost:8000/v1/auth/me -H "Authorization: Bearer $TOKEN"
+
+# 退出
+curl -X POST http://localhost:8000/v1/auth/logout -H "Authorization: Bearer $TOKEN"
+```
+
+---
+
+## 👤 用户
+
+```bash
+# 创建档案（登录时已自动建一份默认，通常不用手工创建）
+curl -X POST http://localhost:8000/v1/users/profile \
+  -H "Content-Type: application/json" \
+  -d '{"openid":"phone_13800138000","nickname":"测试","current_weight":70,"target_weight":65}'
+
+# 获取
+curl http://localhost:8000/v1/users/profile/1
+
+# 更新
+curl -X PUT http://localhost:8000/v1/users/profile/1 \
+  -H "Content-Type: application/json" \
+  -d '{"height":175,"target_calorie":1800}'
+```
+
+---
+
+## 🍽 饮食
+
+```bash
+# 记录
+curl -X POST http://localhost:8000/v1/food/record \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id":1,
+    "food_name":"宫保鸡丁",
+    "calories":520, "protein":25, "fat":30, "carbohydrates":15,
+    "portion":200, "unit":"g",
+    "meal_type":"lunch"
+  }'
+
+# 列表
+curl "http://localhost:8000/v1/food/records?user_id=1"
+
+# 每日汇总
+curl "http://localhost:8000/v1/food/daily-summary?user_id=1"
+
+# 删除 / 更新：PUT /food/record/:id  DELETE /food/record/:id
+```
+
+---
+
+## 🏃 运动
+
+```bash
+# 记录
+curl -X POST http://localhost:8000/v1/exercise/record \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id":1,
+    "type":"跑步", "duration_min":30, "intensity":"medium",
+    "calories_burned":350, "distance":5
+  }'
+
+# 列表 / 汇总（类似饮食）
+curl "http://localhost:8000/v1/exercise/records?user_id=1"
+curl "http://localhost:8000/v1/exercise/daily-summary?user_id=1"
+```
+
+---
+
+## ⚖️ 体重
+
+```bash
+# 记录
+curl -X POST http://localhost:8000/v1/weight/record \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":1, "weight":68.5, "body_fat":22, "note":"晨重"}'
+
+# 列表 / 趋势
+curl "http://localhost:8000/v1/weight/records?user_id=1"
+curl "http://localhost:8000/v1/weight/trend?user_id=1&days=30"
+```
+
+---
+
+## 🤖 AI
+
+```bash
+# 文本估营养
+curl -X POST http://localhost:8000/v1/ai/estimate-nutrition \
+  -H "Content-Type: application/json" \
+  -d '{"text":"一碗米饭 200g"}'
+
+# 文本估运动消耗
+curl -X POST http://localhost:8000/v1/ai/estimate-exercise \
+  -H "Content-Type: application/json" \
+  -d '{"text":"跑步 5 公里 30 分钟"}'
+
+# 文本解析体重
+curl -X POST http://localhost:8000/v1/ai/parse-weight \
+  -H "Content-Type: application/json" \
+  -d '{"text":"68.5kg 早"}'
+
+# 图片识别食物（data URL 或 http URL 都行）
+curl -X POST http://localhost:8000/v1/ai/recognize \
+  -H "Content-Type: application/json" \
+  -d '{"image_url":"data:image/jpeg;base64,...."}'
+
+# 今日 AI 简报（首页卡片数据源）
+curl -X POST http://localhost:8000/v1/ai/daily-brief \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":1}'
+
+# AI 聊天（记忆系统自动组装上下文，不必传历史）
+curl -X POST http://localhost:8000/v1/ai/chat \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "user_id":1,
+    "thread_id":"t1",
+    "messages":[{"role":"user","content":"晚餐建议？"}]
+  }'
+
+# 聊天线程 + 历史
+curl -X POST "http://localhost:8000/v1/ai/chat/thread?user_id=1" \
+  -H "Content-Type: application/json" -d '{"title":"减肥计划"}'
+curl "http://localhost:8000/v1/ai/chat/threads?user_id=1"
+curl "http://localhost:8000/v1/ai/chat/history?user_id=1&thread_id=1"
+
+# AI 鼓励
+curl -X POST http://localhost:8000/v1/ai/encouragement \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":1,"current_weight":70,"target_weight":65,"weight_loss":3,"days_active":15}'
+```
+
+---
+
+## 🧪 自动化
+
+### Shell 冒烟
+
+```bash
 cd backend
-go run cmd/server/main.go
-
-# 检查端口
-lsof -i :8000
+./tests/run_api_tests.sh                   # 主路径
+./tests/test_ai_chat.sh                    # 只测 chat
 ```
 
-### 问题 2：jq 未安装
+### Playwright E2E（14 条后端 + 12 条 UI）
 
-**错误：** `command not found: jq`
-
-**解决：**
 ```bash
-# macOS
-brew install jq
-
-# Ubuntu/Debian
-apt-get install jq
-
-# CentOS/RHEL
-yum install jq
-```
-
-### 问题 3：权限不足
-
-**错误：** `Permission denied`
-
-**解决：**
-```bash
-chmod +x backend/tests/run_api_tests.sh
+cd frontend
+./run_e2e_tests.sh                         # 一键 build + serve + test
+./run_e2e_tests.sh --skip-build -- tests/backend_api_test.js   # 只跑后端那 14 条
 ```
 
 ---
 
-## 📚 文档参考
+## ⚠️ Mock vs 真 Gemini
 
-| 文档 | 说明 |
-|------|------|
-| **[tests/README.md](backend/tests/README.md)** | 完整测试指南 |
-| **[api/swagger.yaml](backend/api/swagger.yaml)** | API 文档 |
-| **[api/README.md](backend/api/README.md)** | API 使用说明 |
+- 后端启动时 `debug: true` + 没有 `GEMINI_API_KEY`：AI 接口**降级返回 mock**（写死的文本），日志会 `Warn`
+- `debug: false` + 没 key：hard fail 500，避免生产环境静默骗调用方
+- 如果某个 AI 测试返回了固定的 `你好！我是你的 AI 减肥助手……`——那就是在 mock
 
----
-
-## 🎯 下一步工作
-
-### 高优先级
-
-1. **启动后端服务**
-   - 确保数据库已启动
-   - 运行后端服务
-   - 验证服务正常
-
-2. **运行测试脚本**
-   - 执行 `run_api_tests.sh`
-   - 查看测试结果
-   - 修复失败的测试
-
-3. **添加更多测试**
-   - 边界值测试
-   - 错误场景测试
-   - 性能测试
-
-### 中优先级
-
-4. **集成 CI/CD**
-   - GitHub Actions
-   - 自动化测试
-   - 代码覆盖率检查
+想验证是不是真的调 Gemini：问两个不同的问题，回复内容应当不同。
 
 ---
 
-## 📊 测试统计
+## 🔗 相关
 
-| 统计项 | 数量 |
-|--------|------|
-| **测试模块** | 4 个 |
-| **测试用例** | 10 个 |
-| **测试脚本** | 2 个 |
-| **文档** | 3 个 |
-
----
-
-## 🔗 相关链接
-
-- **测试脚本：** [backend/tests/run_api_tests.sh](backend/tests/run_api_tests.sh)
-- **测试文档：** [backend/tests/README.md](backend/tests/README.md)
-- **API 文档：** [backend/api/swagger.yaml](backend/api/swagger.yaml)
-- **后端指南：** [backend/README.md](backend/README.md)
-
----
-
-**测试脚本生成时间：** 2026-04-06  
-**测试框架：** Bash + curl + jq  
-**Go 测试框架：** testing
+- [后端 README](backend/README.md) · 完整路由表 + 数据表
+- [前端 README](frontend/README.md)
+- [E2E 测试指南](frontend/tests/README.md)
