@@ -72,7 +72,10 @@ class _AISScreenState extends State<AIScreen> {
       final threads = await _aiService.getUserThreads(userId);
       _threads = threads;
       if (threads.isNotEmpty) {
-        _currentThread = threads.first;
+        // 优先选最近一条"有消息"的线程打开，避免被空 stub 顶到最前面。
+        // 如果全是空的（全新用户/全被清空），退化回最新的。
+        final withMsg = threads.where((t) => t.messageCount > 0).toList();
+        _currentThread = withMsg.isNotEmpty ? withMsg.first : threads.first;
         await _loadMessages();
       } else {
         await _createNewThread();
