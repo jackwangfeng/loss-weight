@@ -168,29 +168,43 @@ class _AISScreenState extends State<AIScreen> {
       return;
     }
 
+    // 乐观更新：立刻把用户消息加到列表里（id 用负值占位，拿到真实 id 前不会冲突）
+    final userId = userProvider.currentUser?.id ?? authProvider.userId;
+    if (userId == null) return;
+    final localUserMsg = AIChatMessage(
+      id: -DateTime.now().millisecondsSinceEpoch,
+      userId: userId,
+      role: 'user',
+      content: message,
+      threadId: _currentThread!.id.toString(),
+      createdAt: DateTime.now(),
+    );
     setState(() {
+      _messages.add(localUserMsg);
       _messageController.clear();
       _isTyping = true;
     });
+    _scrollToBottom();
 
     try {
-      final userId = userProvider.currentUser?.id ?? authProvider.userId;
-      if (userId != null) {
-        final response = await _aiService.chat(
-          userId: userId,
-          message: message,
-          threadId: _currentThread!.id.toString(),
-        );
+      final response = await _aiService.chat(
+        userId: userId,
+        message: message,
+        threadId: _currentThread!.id.toString(),
+      );
 
-        setState(() {
-          _messages.add(response);
-          _isTyping = false;
-        });
-        _scrollToBottom();
-      }
+      setState(() {
+        _messages.add(response);
+        _isTyping = false;
+      });
+      _scrollToBottom();
     } catch (e) {
       if (mounted) {
-        setState(() => _isTyping = false);
+        setState(() {
+          _isTyping = false;
+          // 请求失败：把乐观的 user 消息也撤掉，避免误导
+          _messages.removeWhere((m) => m.id == localUserMsg.id);
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('发送失败：$e')),
         );
