@@ -29,6 +29,8 @@ type CreateFoodRecordRequest struct {
 	Carbohydrates float32   `json:"carbohydrates"`
 	Fat           float32   `json:"fat"`
 	Fiber         float32   `json:"fiber"`
+	Portion       float32   `json:"portion"`
+	Unit          string    `json:"unit"`
 	MealType      string    `json:"meal_type" binding:"required"`
 	EatenAt       time.Time `json:"eaten_at"`
 }
@@ -54,6 +56,8 @@ func (s *FoodService) CreateRecord(req *CreateFoodRecordRequest) (*models.FoodRe
 		Carbohydrates: req.Carbohydrates,
 		Fat:           req.Fat,
 		Fiber:         req.Fiber,
+		Portion:       req.Portion,
+		Unit:          req.Unit,
 		MealType:      req.MealType,
 		EatenAt:       req.EatenAt,
 	}

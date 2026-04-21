@@ -14,6 +14,8 @@ class FoodService {
     double carbohydrates = 0,
     double fat = 0,
     double fiber = 0,
+    double portion = 0,
+    String unit = '',
     required String mealType,
     DateTime? eatenAt,
   }) async {
@@ -26,6 +28,8 @@ class FoodService {
       'carbohydrates': carbohydrates,
       'fat': fat,
       'fiber': fiber,
+      'portion': portion,
+      'unit': unit,
       'meal_type': mealType,
       if (eatenAt != null) 'eaten_at': eatenAt.toIso8601String(),
     };

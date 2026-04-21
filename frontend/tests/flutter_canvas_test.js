@@ -78,9 +78,10 @@ test.describe('Semantics 交互测试', () => {
   test('点击 饮食 tab 应该显示饮食记录界面', async ({ page }) => {
     await waitForTabs(page);
     await page.getByRole('tab', { name: '饮食', exact: true }).click();
+    // AppBar 标题 + 今日汇总卡 + 记录按钮（FAB 或空态引导）—— 无论有没有数据都应该出现
     await expect(page.getByText('饮食记录').first()).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText('暂无饮食记录').first()).toBeVisible();
-    await expect(page.getByText('添加记录').first()).toBeVisible();
+    await expect(page.getByText('今日热量').first()).toBeVisible();
+    await expect(page.getByText('记录', { exact: true }).first()).toBeVisible();
   });
 
   test('点击 体重 tab 应该显示体重记录界面', async ({ page }) => {

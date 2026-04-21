@@ -62,6 +62,10 @@ type RecognizeFoodResponse struct {
 	Confidence    float32 `json:"confidence"`
 }
 
+type EstimateNutritionRequest struct {
+	Text string `json:"text" binding:"required"`
+}
+
 type GetEncouragementRequest struct {
 	UserID        uint    `json:"user_id" binding:"required"`
 	CurrentWeight float32 `json:"current_weight"`
@@ -249,6 +253,52 @@ func (s *AIService) RecognizeFood(req *RecognizeFoodRequest) (*RecognizeFoodResp
 		Fiber:         foodInfo.Fiber,
 		Confidence:    foodInfo.Confidence,
 	}, nil
+}
+
+// EstimateNutritionFromText: 用 Gemini 根据纯文本描述估算营养素。
+// 例：「一碗米饭 200g」「宫保鸡丁一份」「全麦面包两片配一杯豆浆」
+func (s *AIService) EstimateNutritionFromText(text string) (*RecognizeFoodResponse, error) {
+	if s.llmAPIKey == "" {
+		if !s.allowMock {
+			return nil, errLLMNotConfigured
+		}
+		s.logger.Warn("LLM API not configured — estimate-nutrition 返回 mock（debug 模式）")
+		return &RecognizeFoodResponse{
+			FoodName: text, Calories: 300, Protein: 15,
+			Carbohydrates: 40, Fat: 10, Fiber: 5, Confidence: 0.5,
+		}, nil
+	}
+
+	prompt := fmt.Sprintf(`根据以下食物描述估算营养素。严格只返回 JSON，不要 markdown 代码块，不要其他文字。
+
+描述：%s
+
+JSON 格式：
+{
+  "food_name": "简洁的食物名",
+  "calories": 总热量(千卡),
+  "protein": 蛋白质(克),
+  "carbohydrates": 碳水化合物(克),
+  "fat": 脂肪(克),
+  "fiber": 膳食纤维(克),
+  "confidence": 估算置信度(0-1)
+}
+
+注意：
+- 如果描述含具体分量（如 200g / 一碗），按分量算总量；否则按一个标准份估算
+- 数字不要带单位
+- confidence: 描述越具体越高，越模糊越低`, text)
+
+	resp, err := s.callLLM([]ChatMessage{{Role: "user", Content: prompt}})
+	if err != nil {
+		return nil, err
+	}
+	jsonText := stripMarkdownCodeFence(resp.Content)
+	var out RecognizeFoodResponse
+	if err := json.Unmarshal([]byte(jsonText), &out); err != nil {
+		return nil, fmt.Errorf("解析 LLM 返回失败: %w (原文: %s)", err, resp.Content)
+	}
+	return &out, nil
 }
 
 func (s *AIService) GetEncouragement(req *GetEncouragementRequest) (*GetEncouragementResponse, error) {

@@ -84,13 +84,12 @@ class AIService {
     }
   }
 
-  /// 食物识别
+  /// 食物图片识别（image_url 支持 data: URL 或 http(s) URL）
+  /// 返回：{food_name, calories, protein, carbohydrates, fat, fiber, confidence}
   Future<Map<String, dynamic>> recognizeFood({
-    required int userId,
     required String imageUrl,
   }) async {
-    final response = await _apiService.post('/ai/food/recognize', {
-      'user_id': userId,
+    final response = await _apiService.post('/ai/recognize', {
       'image_url': imageUrl,
     });
 
@@ -98,6 +97,19 @@ class AIService {
       return response.data;
     } else {
       throw Exception('食物识别失败');
+    }
+  }
+
+  /// 文本估算营养素（例："一碗米饭 200g"、"宫保鸡丁一份"）
+  /// 返回：{food_name, calories, protein, carbohydrates, fat, fiber, confidence}
+  Future<Map<String, dynamic>> estimateNutrition({required String text}) async {
+    final response = await _apiService.post('/ai/estimate-nutrition', {
+      'text': text,
+    });
+    if (response.statusCode == 200) {
+      return response.data;
+    } else {
+      throw Exception('营养估算失败');
     }
   }
 

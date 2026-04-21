@@ -39,6 +39,21 @@ func (h *AIHandler) RecognizeFood(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+func (h *AIHandler) EstimateNutrition(c *gin.Context) {
+	var req services.EstimateNutritionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	result, err := h.service.EstimateNutritionFromText(req.Text)
+	if err != nil {
+		h.logger.Error("estimate nutrition failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "营养素估算失败"})
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
 func (h *AIHandler) GetEncouragement(c *gin.Context) {
 	var req services.GetEncouragementRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

@@ -16,6 +16,8 @@ type FoodRecord struct {
 	Carbohydrates float32        `gorm:"type:decimal(6,2)" json:"carbohydrates"`
 	Fat           float32        `gorm:"type:decimal(6,2)" json:"fat"`
 	Fiber         float32        `gorm:"type:decimal(6,2)" json:"fiber"`
+	Portion       float32        `gorm:"type:decimal(8,2)" json:"portion"`
+	Unit          string         `gorm:"size:16" json:"unit"`
 	MealType      string         `gorm:"size:16;not null" json:"meal_type"`
 	EatenAt       time.Time      `json:"eaten_at"`
 	CreatedAt     time.Time      `json:"created_at"`

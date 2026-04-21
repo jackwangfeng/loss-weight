@@ -67,6 +67,7 @@ func SetupAIRoutes(v1 *gin.RouterGroup, db *gorm.DB, logger *zap.Logger, cfg *co
 	ai := v1.Group("/ai")
 	{
 		ai.POST("/recognize", aiHandler.RecognizeFood)
+		ai.POST("/estimate-nutrition", aiHandler.EstimateNutrition)
 		ai.POST("/encouragement", aiHandler.GetEncouragement)
 		ai.POST("/chat", aiHandler.Chat)
 		ai.GET("/chat/history", aiHandler.GetChatHistory)

@@ -8,6 +8,8 @@ class FoodRecord {
   final double carbohydrates;
   final double fat;
   final double fiber;
+  final double portion;
+  final String unit;
   final String mealType;
   final DateTime eatenAt;
   final DateTime createdAt;
@@ -23,6 +25,8 @@ class FoodRecord {
     this.carbohydrates = 0,
     this.fat = 0,
     this.fiber = 0,
+    this.portion = 0,
+    this.unit = '',
     required this.mealType,
     required this.eatenAt,
     required this.createdAt,
@@ -40,6 +44,8 @@ class FoodRecord {
       carbohydrates: (json['carbohydrates'] ?? 0).toDouble(),
       fat: (json['fat'] ?? 0).toDouble(),
       fiber: (json['fiber'] ?? 0).toDouble(),
+      portion: (json['portion'] ?? 0).toDouble(),
+      unit: json['unit'] ?? '',
       mealType: json['meal_type'] ?? 'breakfast',
       eatenAt: DateTime.parse(json['eaten_at']),
       createdAt: DateTime.parse(json['created_at']),
@@ -58,11 +64,21 @@ class FoodRecord {
       'carbohydrates': carbohydrates,
       'fat': fat,
       'fiber': fiber,
+      'portion': portion,
+      'unit': unit,
       'meal_type': mealType,
       'eaten_at': eatenAt.toIso8601String(),
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };
+  }
+
+  String get portionLabel {
+    if (portion <= 0) return '';
+    final n = portion == portion.roundToDouble()
+        ? portion.toInt().toString()
+        : portion.toStringAsFixed(1);
+    return unit.isEmpty ? n : '$n$unit';
   }
 
   String get mealTypeLabel {
