@@ -66,6 +66,34 @@ type EstimateNutritionRequest struct {
 	Text string `json:"text" binding:"required"`
 }
 
+type EstimateExerciseRequest struct {
+	Text string `json:"text" binding:"required"`
+}
+
+type EstimateExerciseResponse struct {
+	Type           string  `json:"type"`
+	DurationMin    int     `json:"duration_min"`
+	Intensity      string  `json:"intensity"`
+	CaloriesBurned float32 `json:"calories_burned"`
+	Distance       float32 `json:"distance"`
+	Confidence     float32 `json:"confidence"`
+}
+
+type DailyBriefRequest struct {
+	UserID uint `json:"user_id" binding:"required"`
+}
+
+type DailyBriefResponse struct {
+	TargetCalories   float32 `json:"target_calories"`
+	CaloriesEaten    float32 `json:"calories_eaten"`
+	CaloriesBurned   float32 `json:"calories_burned"`
+	CaloriesRemaining float32 `json:"calories_remaining"`
+	MealsLogged      int     `json:"meals_logged"`
+	ExercisesLogged  int     `json:"exercises_logged"`
+	// Brief 一句话点评 + 下一步建议
+	Brief string `json:"brief"`
+}
+
 type GetEncouragementRequest struct {
 	UserID        uint    `json:"user_id" binding:"required"`
 	CurrentWeight float32 `json:"current_weight"`
@@ -299,6 +327,174 @@ JSON 格式：
 		return nil, fmt.Errorf("解析 LLM 返回失败: %w (原文: %s)", err, resp.Content)
 	}
 	return &out, nil
+}
+
+// EstimateExerciseFromText: 用 Gemini 估算运动类型 + 时长 + 消耗
+// 例："跑步 5 公里 30 分钟"、"力量训练 45 分钟"、"走路一小时"
+func (s *AIService) EstimateExerciseFromText(text string) (*EstimateExerciseResponse, error) {
+	if s.llmAPIKey == "" {
+		if !s.allowMock {
+			return nil, errLLMNotConfigured
+		}
+		s.logger.Warn("LLM API not configured — estimate-exercise 返回 mock（debug 模式）")
+		return &EstimateExerciseResponse{
+			Type: text, DurationMin: 30, Intensity: "medium",
+			CaloriesBurned: 200, Confidence: 0.5,
+		}, nil
+	}
+	prompt := fmt.Sprintf(`根据以下运动描述估算。严格只返回 JSON，不要 markdown 代码块。
+
+描述：%s
+
+JSON 格式：
+{
+  "type": "运动类型（跑步/游泳/力量/瑜伽/骑行/走路/徒步/球类/舞蹈/HIIT 等中文简称）",
+  "duration_min": 时长(分钟, 整数),
+  "intensity": "low | medium | high",
+  "calories_burned": 消耗热量(千卡),
+  "distance": 距离(公里, 没有则填 0),
+  "confidence": 置信度(0-1)
+}
+
+规则：
+- 按一个成年人（70kg 左右）的标准消耗估
+- 如果描述含"轻度/散步/慢走"→ low；常见有氧 → medium；"冲刺/HIIT/高强度" → high`, text)
+
+	resp, err := s.callLLM([]ChatMessage{{Role: "user", Content: prompt}})
+	if err != nil {
+		return nil, err
+	}
+	jsonText := stripMarkdownCodeFence(resp.Content)
+	var out EstimateExerciseResponse
+	if err := json.Unmarshal([]byte(jsonText), &out); err != nil {
+		return nil, fmt.Errorf("解析 LLM 返回失败: %w (原文: %s)", err, resp.Content)
+	}
+	return &out, nil
+}
+
+// GetDailyBrief: 组合 profile + 今日饮食 + 今日运动，让 LLM 写一句话今日简报。
+// 这是首页卡片的数据源——让 AI "在场"。
+func (s *AIService) GetDailyBrief(userID uint) (*DailyBriefResponse, error) {
+	// 1. 拉数据
+	profile := s.loadUserProfile(userID)
+	var target float32
+	if profile != nil && profile.TargetCalorie > 0 {
+		target = profile.TargetCalorie
+	} else {
+		target = 2000 // 兜底默认
+	}
+
+	// 今日饮食
+	foods := s.loadTodayFood(userID)
+	var eaten float32
+	for _, f := range foods {
+		eaten += f.calories
+	}
+
+	// 今日运动
+	now := time.Now()
+	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	end := start.Add(24 * time.Hour)
+	var exercises []models.ExerciseRecord
+	s.db.Where("user_id = ? AND exercised_at >= ? AND exercised_at < ?",
+		userID, start, end).Find(&exercises)
+	var burned float32
+	for _, e := range exercises {
+		burned += e.CaloriesBurned
+	}
+
+	remaining := target - eaten + burned
+	out := &DailyBriefResponse{
+		TargetCalories:    target,
+		CaloriesEaten:     eaten,
+		CaloriesBurned:    burned,
+		CaloriesRemaining: remaining,
+		MealsLogged:       len(foods),
+		ExercisesLogged:   len(exercises),
+	}
+
+	// 2. 让 LLM 写一句话
+	if s.llmAPIKey == "" {
+		if !s.allowMock {
+			out.Brief = ""
+			return out, nil
+		}
+		out.Brief = fmt.Sprintf("今日已摄入 %.0f kcal，消耗 %.0f kcal，剩余额度 %.0f kcal。继续保持！",
+			eaten, burned, remaining)
+		return out, nil
+	}
+
+	hour := now.Hour()
+	mealHint := ""
+	switch {
+	case hour < 10:
+		mealHint = "即将进入早餐/午餐时段"
+	case hour < 14:
+		mealHint = "午餐或下午茶时段"
+	case hour < 17:
+		mealHint = "距离晚餐还有一段时间"
+	case hour < 21:
+		mealHint = "晚餐时段"
+	default:
+		mealHint = "接近睡前"
+	}
+
+	// 用户长期事实（从记忆里取 top-10）
+	facts := s.loadUserFacts(userID, 10)
+	var factLines []string
+	for _, f := range facts {
+		factLines = append(factLines, fmt.Sprintf("- [%s] %s", f.Category, f.Fact))
+	}
+
+	foodLines := make([]string, 0, len(foods))
+	for _, f := range foods {
+		foodLines = append(foodLines, fmt.Sprintf("%s (%.0f kcal)", f.name, f.calories))
+	}
+	exerciseLines := make([]string, 0, len(exercises))
+	for _, e := range exercises {
+		exerciseLines = append(exerciseLines, fmt.Sprintf("%s %d 分钟 (%.0f kcal)",
+			e.Type, e.DurationMin, e.CaloriesBurned))
+	}
+
+	prompt := fmt.Sprintf(`你是用户的减肥 AI 助理，负责首页的"今日简报"。
+
+## 当前状态
+- 现在时刻：%s（%s）
+- 目标热量：%.0f kcal
+- 今日摄入：%.0f kcal
+- 今日消耗：%.0f kcal
+- 剩余额度：%.0f kcal
+
+## 今日饮食
+%s
+
+## 今日运动
+%s
+
+## 用户长期事实
+%s
+
+## 写作要求
+- 一段 60-120 字的中文
+- 先温和点评当前状态（是否合理、节奏如何），再给一条具体、可执行的下一步建议（下一餐吃什么 / 要不要加一次轻运动 / 休息一下 等）
+- 结合用户的约束和偏好（牛奶过敏就别建议喝奶、讨厌跑步就别推荐跑）
+- 不要列表、不要 emoji、不要空行、不要开头说"你好"之类`,
+		now.Format("15:04"), mealHint,
+		target, eaten, burned, remaining,
+		strings.Join(append([]string{"（无）"}, foodLines...), "\n"),
+		strings.Join(append([]string{"（无）"}, exerciseLines...), "\n"),
+		strings.Join(append([]string{"（暂无积累）"}, factLines...), "\n"),
+	)
+
+	resp, err := s.callLLM([]ChatMessage{{Role: "user", Content: prompt}})
+	if err != nil {
+		s.logger.Warn("daily-brief LLM failed", zap.Error(err))
+		out.Brief = fmt.Sprintf("今日摄入 %.0f kcal，消耗 %.0f kcal，剩余 %.0f kcal。",
+			eaten, burned, remaining)
+		return out, nil
+	}
+	out.Brief = strings.TrimSpace(resp.Content)
+	return out, nil
 }
 
 func (s *AIService) GetEncouragement(req *GetEncouragementRequest) (*GetEncouragementResponse, error) {

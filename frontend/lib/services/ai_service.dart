@@ -113,6 +113,33 @@ class AIService {
     }
   }
 
+  /// 文本估算运动消耗（例："跑步 5 公里 30 分钟"、"瑜伽一小时"）
+  /// 返回：{type, duration_min, intensity, calories_burned, distance, confidence}
+  Future<Map<String, dynamic>> estimateExercise({required String text}) async {
+    final response = await _apiService.post('/ai/estimate-exercise', {
+      'text': text,
+    });
+    if (response.statusCode == 200) {
+      return response.data;
+    } else {
+      throw Exception('运动消耗估算失败');
+    }
+  }
+
+  /// 今日 AI 简报：用于首页顶部卡片
+  /// 返回：{target_calories, calories_eaten, calories_burned, calories_remaining,
+  ///        meals_logged, exercises_logged, brief}
+  Future<Map<String, dynamic>> getDailyBrief({required int userId}) async {
+    final response = await _apiService.post('/ai/daily-brief', {
+      'user_id': userId,
+    });
+    if (response.statusCode == 200) {
+      return response.data;
+    } else {
+      throw Exception('获取简报失败');
+    }
+  }
+
   /// 获取 AI 鼓励
   Future<String> getEncouragement({
     required int userId,

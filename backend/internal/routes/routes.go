@@ -39,6 +39,21 @@ func SetupFoodRoutes(v1 *gin.RouterGroup, db *gorm.DB, logger *zap.Logger) {
 	}
 }
 
+func SetupExerciseRoutes(v1 *gin.RouterGroup, db *gorm.DB, logger *zap.Logger) {
+	service := services.NewExerciseService(db, logger)
+	handler := handlers.NewExerciseHandler(service, logger)
+
+	ex := v1.Group("/exercise")
+	{
+		ex.POST("/record", handler.CreateRecord)
+		ex.GET("/records", handler.GetRecords)
+		ex.GET("/record/:id", handler.GetRecord)
+		ex.PUT("/record/:id", handler.UpdateRecord)
+		ex.DELETE("/record/:id", handler.DeleteRecord)
+		ex.GET("/daily-summary", handler.GetDailySummary)
+	}
+}
+
 func SetupWeightRoutes(v1 *gin.RouterGroup, db *gorm.DB, logger *zap.Logger) {
 	weightService := services.NewWeightService(db, logger)
 	weightHandler := handlers.NewWeightHandler(weightService, logger)
@@ -68,6 +83,8 @@ func SetupAIRoutes(v1 *gin.RouterGroup, db *gorm.DB, logger *zap.Logger, cfg *co
 	{
 		ai.POST("/recognize", aiHandler.RecognizeFood)
 		ai.POST("/estimate-nutrition", aiHandler.EstimateNutrition)
+		ai.POST("/estimate-exercise", aiHandler.EstimateExercise)
+		ai.POST("/daily-brief", aiHandler.GetDailyBrief)
 		ai.POST("/encouragement", aiHandler.GetEncouragement)
 		ai.POST("/chat", aiHandler.Chat)
 		ai.GET("/chat/history", aiHandler.GetChatHistory)

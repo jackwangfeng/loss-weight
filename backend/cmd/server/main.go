@@ -41,6 +41,7 @@ func main() {
 		&models.UserSettings{},
 		&models.FoodRecord{},
 		&models.WeightRecord{},
+		&models.ExerciseRecord{},
 		&models.AIChatMessage{},
 		&models.AIChatThread{},
 		&models.UserFact{},
@@ -78,6 +79,7 @@ func main() {
 		routes.SetupUserRoutes(v1, db, logger)
 		routes.SetupFoodRoutes(v1, db, logger)
 		routes.SetupWeightRoutes(v1, db, logger)
+		routes.SetupExerciseRoutes(v1, db, logger)
 		routes.SetupAIRoutes(v1, db, logger, cfg)
 	}
 

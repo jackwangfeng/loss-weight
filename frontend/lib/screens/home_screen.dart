@@ -5,8 +5,10 @@ import '../providers/user_provider.dart';
 import '../screens/login_screen.dart';
 import 'food_screen.dart';
 import 'weight_screen.dart';
+import 'exercise_screen.dart';
 import 'ai_screen.dart';
 import 'profile_screen.dart';
+import '../services/ai_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -31,6 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               DashboardScreen(user: user, isLoggedIn: isLoggedIn),
               const FoodScreen(),
+              const ExerciseScreen(),
               const WeightScreen(),
               const AIScreen(),
               const ProfileScreen(),
@@ -53,6 +56,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: Icon(Icons.restaurant_outlined),
                 selectedIcon: Icon(Icons.restaurant),
                 label: '饮食',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.directions_run_outlined),
+                selectedIcon: Icon(Icons.directions_run),
+                label: '运动',
               ),
               NavigationDestination(
                 icon: Icon(Icons.monitor_weight_outlined),
@@ -128,25 +136,13 @@ class DashboardScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '早安，${user.nickname ?? "用户"}！',
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '坚持就是胜利，今天也要加油哦！💪',
-                      style: Theme.of(context).textTheme.bodyLarge,
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            // AI 今日简报卡（最新最重要的）
+            _DailyBriefCard(userId: user.id, onChatTap: () {
+              final homeState = context.findAncestorStateOfType<_HomeScreenState>();
+              homeState?.setState(() {
+                homeState._selectedIndex = 4; // AI tab（切到 AI 聊天）
+              });
+            }),
             const SizedBox(height: 16),
             Row(
               children: [
@@ -221,13 +217,28 @@ class DashboardScreen extends StatelessWidget {
                 Expanded(
                   child: _buildQuickAction(
                     context,
+                    '记录运动',
+                    Icons.directions_run,
+                    Colors.red,
+                    () {
+                      final homeState = context.findAncestorStateOfType<_HomeScreenState>();
+                      homeState?.setState(() {
+                        homeState._selectedIndex = 2;
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildQuickAction(
+                    context,
                     '记录体重',
                     Icons.monitor_weight,
                     Colors.blue,
                     () {
                       final homeState = context.findAncestorStateOfType<_HomeScreenState>();
                       homeState?.setState(() {
-                        homeState!._selectedIndex = 2;
+                        homeState._selectedIndex = 3;
                       });
                     },
                   ),
@@ -357,4 +368,172 @@ class DashboardScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+// ============================================================================
+//  AI 今日简报卡片
+//  进入首页异步拉一次；剩余额度、建议一段 AI 生成的点评
+// ============================================================================
+
+class _DailyBriefCard extends StatefulWidget {
+  final int userId;
+  final VoidCallback onChatTap;
+  const _DailyBriefCard({required this.userId, required this.onChatTap});
+  @override
+  State<_DailyBriefCard> createState() => _DailyBriefCardState();
+}
+
+class _DailyBriefCardState extends State<_DailyBriefCard> {
+  final AIService _ai = AIService();
+  Map<String, dynamic>? _data;
+  String? _error;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  Future<void> _load() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      _data = await _ai.getDailyBrief(userId: widget.userId);
+    } catch (e) {
+      _error = e.toString();
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      color: Colors.green[50],
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.auto_awesome, size: 18, color: Colors.green[800]),
+                const SizedBox(width: 6),
+                Text('今日 AI 简报',
+                    style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.green[900],
+                        fontWeight: FontWeight.w600)),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.refresh, size: 18),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: _loading ? null : _load,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (_loading && _data == null)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_error != null)
+              Text('加载失败：$_error',
+                  style: const TextStyle(color: Colors.red))
+            else if (_data != null) ...[
+              _buildBudgetRow(),
+              const SizedBox(height: 10),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: _progress(),
+                  minHeight: 6,
+                  backgroundColor: Colors.white,
+                  valueColor: AlwaysStoppedAnimation(_progressColor()),
+                ),
+              ),
+              if ((_data!['brief'] ?? '').toString().isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Text(
+                  _data!['brief'].toString(),
+                  style: const TextStyle(
+                      fontSize: 14, color: Colors.black87, height: 1.5),
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: widget.onChatTap,
+                    icon: const Icon(Icons.chat_bubble_outline, size: 16),
+                    label: const Text('跟 AI 聊聊'),
+                  ),
+                ),
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  double _progress() {
+    final tgt = (_data?['target_calories'] as num?)?.toDouble() ?? 0;
+    final eaten = (_data?['calories_eaten'] as num?)?.toDouble() ?? 0;
+    final burned = (_data?['calories_burned'] as num?)?.toDouble() ?? 0;
+    final net = eaten - burned;
+    if (tgt <= 0) return 0;
+    return (net / tgt).clamp(0.0, 1.2).toDouble();
+  }
+
+  Color _progressColor() {
+    final tgt = (_data?['target_calories'] as num?)?.toDouble() ?? 0;
+    final eaten = (_data?['calories_eaten'] as num?)?.toDouble() ?? 0;
+    final burned = (_data?['calories_burned'] as num?)?.toDouble() ?? 0;
+    return (eaten - burned) > tgt ? Colors.red : Colors.green;
+  }
+
+  Widget _buildBudgetRow() {
+    final tgt = (_data?['target_calories'] as num?)?.toDouble() ?? 0;
+    final eaten = (_data?['calories_eaten'] as num?)?.toDouble() ?? 0;
+    final burned = (_data?['calories_burned'] as num?)?.toDouble() ?? 0;
+    final remaining = (_data?['calories_remaining'] as num?)?.toDouble() ?? 0;
+    return Row(
+      children: [
+        _pill('目标', tgt),
+        _arrow(),
+        _pill('吃', eaten),
+        _arrow(),
+        _pill('烧', burned),
+        const Spacer(),
+        Text('剩余 ${remaining.toStringAsFixed(0)}',
+            style: TextStyle(
+                fontSize: 13,
+                color: remaining < 0 ? Colors.red : Colors.green[900],
+                fontWeight: FontWeight.w600)),
+      ],
+    );
+  }
+
+  Widget _pill(String label, double value) => Padding(
+        padding: const EdgeInsets.only(right: 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label,
+                style: const TextStyle(fontSize: 10, color: Colors.grey)),
+            Text(value.toStringAsFixed(0),
+                style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      );
+
+  Widget _arrow() => const Padding(
+        padding: EdgeInsets.only(right: 6, top: 10),
+        child: Icon(Icons.arrow_right_alt, size: 16, color: Colors.grey),
+      );
 }

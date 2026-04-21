@@ -156,7 +156,26 @@ class _FoodScreenState extends State<FoodScreen> {
         prefill: prefill,
       ),
     );
-    if (created == true) _loadRecords();
+    if (created == true) {
+      await _loadRecords();
+      _showBudgetToast();
+    }
+  }
+
+  /// 记录完食物，给个「剩余额度」的及时反馈
+  void _showBudgetToast() {
+    if (!mounted) return;
+    final user = context.read<UserProvider>().currentUser;
+    if (user == null || user.targetCalorie <= 0) return;
+    final today = _todayRecords();
+    final eaten = today.fold<double>(0, (s, r) => s + r.calories);
+    final remaining = user.targetCalorie - eaten;
+    final msg = remaining >= 0
+        ? '今日已吃 ${eaten.toStringAsFixed(0)} kcal，剩余 ${remaining.toStringAsFixed(0)} kcal'
+        : '今日已吃 ${eaten.toStringAsFixed(0)} kcal，超出 ${(-remaining).toStringAsFixed(0)} kcal';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), duration: const Duration(seconds: 3)),
+    );
   }
 }
 

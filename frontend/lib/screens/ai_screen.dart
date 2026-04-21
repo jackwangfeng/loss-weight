@@ -87,7 +87,7 @@ class _AISScreenState extends State<AIScreen> {
 
   Future<void> _loadMessages() async {
     if (_currentThread == null) return;
-    
+
     try {
       final userProvider = Provider.of<UserProvider>(context, listen: false);
       if (userProvider.currentUser != null) {
@@ -99,6 +99,11 @@ class _AISScreenState extends State<AIScreen> {
           _messages = messages;
         });
         _scrollToBottom();
+
+        // 空 thread：拿今日简报当作 AI 主动打招呼（不入库，只是展示态）
+        if (messages.isEmpty) {
+          _injectGreeting(userProvider.currentUser!.id);
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -106,6 +111,27 @@ class _AISScreenState extends State<AIScreen> {
           SnackBar(content: Text('加载消息失败：$e')),
         );
       }
+    }
+  }
+
+  Future<void> _injectGreeting(int userId) async {
+    try {
+      final brief = await _aiService.getDailyBrief(userId: userId);
+      final text = (brief['brief'] ?? '').toString();
+      if (text.isEmpty || !mounted) return;
+      setState(() {
+        _messages.add(AIChatMessage(
+          id: -DateTime.now().millisecondsSinceEpoch,
+          userId: userId,
+          role: 'assistant',
+          content: text,
+          threadId: _currentThread?.id.toString() ?? '',
+          createdAt: DateTime.now(),
+        ));
+      });
+      _scrollToBottom();
+    } catch (_) {
+      // 简报失败不影响聊天；静默
     }
   }
 

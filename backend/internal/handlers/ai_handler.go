@@ -39,6 +39,36 @@ func (h *AIHandler) RecognizeFood(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+func (h *AIHandler) EstimateExercise(c *gin.Context) {
+	var req services.EstimateExerciseRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	result, err := h.service.EstimateExerciseFromText(req.Text)
+	if err != nil {
+		h.logger.Error("estimate exercise failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "运动消耗估算失败"})
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *AIHandler) GetDailyBrief(c *gin.Context) {
+	var req services.DailyBriefRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	result, err := h.service.GetDailyBrief(req.UserID)
+	if err != nil {
+		h.logger.Error("daily brief failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成简报失败"})
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
 func (h *AIHandler) EstimateNutrition(c *gin.Context) {
 	var req services.EstimateNutritionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
