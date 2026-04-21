@@ -70,6 +70,16 @@ const server = http.createServer((req, res) => {
   });
 });
 
+// 客户端中断造成的 EPIPE/ECONNRESET 不应该让进程挂——Playwright
+// 频繁启停浏览器就会触发这种错误。
+server.on('clientError', (err, socket) => {
+  if (!socket.destroyed) socket.destroy();
+});
+process.on('uncaughtException', (err) => {
+  if (err && (err.code === 'EPIPE' || err.code === 'ECONNRESET')) return;
+  console.error('uncaughtException:', err);
+});
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`static server serving ${ROOT}`);
   console.log(`listening on http://localhost:${PORT}`);

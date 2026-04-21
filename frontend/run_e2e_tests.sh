@@ -77,20 +77,14 @@ build_web() {
 }
 
 ensure_static_server() {
-    # 复用前做个响应性探活：能在 2s 内返回 2.8MB 的 main.dart.js 才算健康。
-    # 否则（通常是跑久了的 python http.server 卡住）杀掉重启。
-    if curl -sf --max-time 2 "${FRONTEND_URL}/flutter_bootstrap.js" > /dev/null 2>&1 \
-        && curl -sf --max-time 5 -o /dev/null "${FRONTEND_URL}/main.dart.js" 2>/dev/null; then
-        echo -e "${GREEN}✓ 静态服务器已在 ${FRONTEND_URL}，健康，复用${NC}"
-        return
-    fi
-
-    # 端口被占但响应不健康：把占用者清掉再起
+    # 不复用现有 server——长跑后的静态服务器（不论 python/node）会出现
+    # 通过浅探活但扛不住真实并发的怪态，之前已踩过好几次。每次都起新的，
+    # 启动只要不到 1s，换来稳定性值得。
     existing_pid=$(ss -tlnp 2>/dev/null | awk -v p=":${FRONTEND_PORT}\\b" \
         '$0 ~ p {match($0, /pid=[0-9]+/); if (RLENGTH>0) print substr($0, RSTART+4, RLENGTH-4)}' \
         | head -1)
     if [ -n "$existing_pid" ]; then
-        echo -e "${YELLOW}⚠ ${FRONTEND_URL} 上有进程 (pid=$existing_pid) 但响应不健康，结束它...${NC}"
+        echo -e "${YELLOW}⚠ 端口 ${FRONTEND_PORT} 上有残留进程 (pid=$existing_pid)，结束它...${NC}"
         kill "$existing_pid" 2>/dev/null || true
         sleep 1
         kill -9 "$existing_pid" 2>/dev/null || true
@@ -155,6 +149,10 @@ fi
 ensure_static_server
 
 echo ""
+# 清掉 HTTP 代理：本机测试不需要代理，留着会让 Chromium 把 localhost 请求
+# 发到代理上造成 60s 超时（NO_PROXY=localhost 在某些 Playwright 版本下不可靠）
+unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy ALL_PROXY all_proxy
+
 echo -e "${YELLOW}🧪 跑 Playwright 测试...${NC}"
 PW_ARGS=(--project=chromium --reporter=list)
 [ "$HEADED" = true ] && PW_ARGS+=(--headed)
