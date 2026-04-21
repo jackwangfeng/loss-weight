@@ -2,17 +2,26 @@ package services
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/your-org/loss-weight/backend/internal/models"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
+
+// Gemini 默认端点（gemini-pro 已被 Google 下线）。可通过 config 的
+// gemini_api_url / vision_api_url 覆盖。
+const defaultGeminiURL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+
+// errLLMNotConfigured 当 debug=false 且 LLM key 缺失时返回。
+var errLLMNotConfigured = errors.New("LLM 未配置：请设置 GEMINI_API_KEY 环境变量，或在 debug 模式下启动以使用 mock")
 
 type AIService struct {
 	db           *gorm.DB
@@ -21,9 +30,12 @@ type AIService struct {
 	llmAPIURL    string
 	visionAPIKey string
 	visionAPIURL string
+	// allowMock 为 true 时，缺失 LLM key 会降级到写死的 mock 响应；
+	// 为 false（生产）时 hard fail，避免静默兜底骗调用方。
+	allowMock bool
 }
 
-func NewAIService(db *gorm.DB, logger *zap.Logger, llmAPIKey, llmAPIURL, visionAPIKey, visionAPIURL string) *AIService {
+func NewAIService(db *gorm.DB, logger *zap.Logger, llmAPIKey, llmAPIURL, visionAPIKey, visionAPIURL string, allowMock bool) *AIService {
 	return &AIService{
 		db:           db,
 		logger:       logger,
@@ -31,6 +43,7 @@ func NewAIService(db *gorm.DB, logger *zap.Logger, llmAPIKey, llmAPIURL, visionA
 		llmAPIURL:    llmAPIURL,
 		visionAPIKey: visionAPIKey,
 		visionAPIURL: visionAPIURL,
+		allowMock:    allowMock,
 	}
 }
 
@@ -81,21 +94,22 @@ type ChatResponse struct {
 }
 
 func (s *AIService) RecognizeFood(req *RecognizeFoodRequest) (*RecognizeFoodResponse, error) {
-	// 使用 Gemini Pro Vision 进行食物识别
 	apiURL := s.visionAPIURL
 	if apiURL == "" {
-		// 默认使用 Gemini Pro Vision API
-		apiURL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent"
+		apiURL = defaultGeminiURL
 	}
 
 	apiKey := s.visionAPIKey
 	if apiKey == "" {
-		// 如果没有单独配置，使用 LLM API Key
+		// 没单独配置 vision key 时，复用 LLM key
 		apiKey = s.llmAPIKey
 	}
 
 	if apiKey == "" {
-		s.logger.Warn("vision API not configured, using mock response")
+		if !s.allowMock {
+			return nil, errLLMNotConfigured
+		}
+		s.logger.Warn("vision API not configured — 返回 mock（debug 模式）")
 		return &RecognizeFoodResponse{
 			FoodName:      "测试食物",
 			Calories:      300,
@@ -107,7 +121,13 @@ func (s *AIService) RecognizeFood(req *RecognizeFoodRequest) (*RecognizeFoodResp
 		}, nil
 	}
 
-	// 构建 Gemini Vision 请求
+	// 把 image URL / data URL 统一转成 base64 + mime，Gemini 只接 inline_data
+	mimeType, b64, err := fetchImageAsBase64(req.ImageURL)
+	if err != nil {
+		s.logger.Error("failed to fetch image", zap.Error(err))
+		return nil, fmt.Errorf("获取图片失败: %w", err)
+	}
+
 	prompt := `请分析这张食物图片，返回以下格式的信息（只返回 JSON，不要其他内容）：
 {
   "food_name": "食物名称",
@@ -126,19 +146,16 @@ func (s *AIService) RecognizeFood(req *RecognizeFoodRequest) (*RecognizeFoodResp
 			{
 				"role": "user",
 				"parts": []map[string]interface{}{
-					{
-						"text": prompt,
-					},
-					{
-						"image_url": map[string]string{
-							"url": req.ImageURL,
-						},
-					},
+					{"text": prompt},
+					{"inline_data": map[string]string{
+						"mime_type": mimeType,
+						"data":      b64,
+					}},
 				},
 			},
 		},
 		"generationConfig": map[string]interface{}{
-			"temperature":  0.3,
+			"temperature":     0.3,
 			"maxOutputTokens": 500,
 		},
 	}
@@ -253,8 +270,11 @@ func (s *AIService) GetEncouragement(req *GetEncouragementRequest) (*GetEncourag
 		req.Achievements,
 	)
 
-	if s.llmAPIURL == "" || s.llmAPIKey == "" {
-		s.logger.Warn("LLM API not configured, using mock response")
+	if s.llmAPIKey == "" {
+		if !s.allowMock {
+			return nil, errLLMNotConfigured
+		}
+		s.logger.Warn("LLM API not configured — encouragement 返回 mock（debug 模式）")
 		return &GetEncouragementResponse{
 			Message: fmt.Sprintf("太棒了！你已经坚持了 %d 天，减重 %.1f kg！继续保持，你一定能达成目标！💪", req.DaysActive, req.WeightLoss),
 			Suggestions: []string{
@@ -290,40 +310,45 @@ func (s *AIService) Chat(req *ChatRequest) (*ChatResponse, error) {
 		return nil, errors.New("messages cannot be empty")
 	}
 
-	if s.llmAPIURL == "" || s.llmAPIKey == "" {
-		s.logger.Warn("LLM API not configured, using mock response")
-		mockMsg := &models.AIChatMessage{
+	// 先把本轮用户问题入库（messages 数组的最后一条 user 消息就是新问题）
+	if last := req.Messages[len(req.Messages)-1]; last.Role == "user" && last.Content != "" {
+		userMsg := &models.AIChatMessage{
 			UserID:   req.UserID,
-			Role:     "assistant",
-			Content:  "你好！我是你的 AI 减肥助手。有什么我可以帮助你的吗？",
+			Role:     "user",
+			Content:  last.Content,
 			ThreadID: req.ThreadID,
 		}
-		if err := s.db.Create(mockMsg).Error; err != nil {
-			s.logger.Error("failed to save chat message", zap.Error(err))
+		if err := s.db.Create(userMsg).Error; err != nil {
+			s.logger.Error("failed to save user message", zap.Error(err))
+			// 继续，不阻断聊天
 		}
-		return &ChatResponse{
-			MessageID: mockMsg.ID,
-			Role:      "assistant",
-			Content:   mockMsg.Content,
-			ThreadID:  req.ThreadID,
-		}, nil
 	}
 
-	assistantMsg, err := s.callLLM(req.Messages)
-	if err != nil {
-		s.logger.Error("LLM API call failed", zap.Error(err))
-		return nil, err
+	var assistantContent string
+	if s.llmAPIKey == "" {
+		if !s.allowMock {
+			return nil, errLLMNotConfigured
+		}
+		s.logger.Warn("LLM API not configured — chat 返回 mock（debug 模式）")
+		assistantContent = "你好！我是你的 AI 减肥助手。有什么我可以帮助你的吗？"
+	} else {
+		resp, err := s.callLLM(req.Messages)
+		if err != nil {
+			s.logger.Error("LLM API call failed", zap.Error(err))
+			return nil, err
+		}
+		assistantContent = resp.Content
 	}
 
 	dbMessage := &models.AIChatMessage{
 		UserID:   req.UserID,
 		Role:     "assistant",
-		Content:  assistantMsg.Content,
+		Content:  assistantContent,
 		ThreadID: req.ThreadID,
 	}
 
 	if err := s.db.Create(dbMessage).Error; err != nil {
-		s.logger.Error("failed to save chat message", zap.Error(err))
+		s.logger.Error("failed to save assistant message", zap.Error(err))
 		return nil, err
 	}
 
@@ -336,11 +361,9 @@ func (s *AIService) Chat(req *ChatRequest) (*ChatResponse, error) {
 }
 
 func (s *AIService) callLLM(messages []ChatMessage) (*ChatMessage, error) {
-	// 构建 Gemini API 请求
-	// Gemini API URL: https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent
 	apiURL := s.llmAPIURL
 	if apiURL == "" {
-		apiURL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
+		apiURL = defaultGeminiURL
 	}
 
 	// 构建请求内容
@@ -362,7 +385,7 @@ func (s *AIService) callLLM(messages []ChatMessage) (*ChatMessage, error) {
 		"contents": contents,
 		"generationConfig": map[string]interface{}{
 			"temperature":     0.7,
-			"maxOutputTokens":  1000,
+			"maxOutputTokens": 4096,
 		},
 	}
 
@@ -413,6 +436,49 @@ func (s *AIService) callLLM(messages []ChatMessage) (*ChatMessage, error) {
 		Role:    "assistant",
 		Content: result.Candidates[0].Content.Parts[0].Text,
 	}, nil
+}
+
+// fetchImageAsBase64 支持两种输入：
+//   - data URL：data:image/jpeg;base64,<payload>  → 直接拆出来
+//   - http(s) URL：用 HTTP GET 抓下来，探测/取 Content-Type 后 base64
+func fetchImageAsBase64(imageURL string) (mimeType string, b64 string, err error) {
+	if strings.HasPrefix(imageURL, "data:") {
+		// data:<mime>;base64,<data>
+		comma := strings.Index(imageURL, ",")
+		if comma < 0 {
+			return "", "", errors.New("invalid data URL: 没有逗号")
+		}
+		header := imageURL[5:comma]
+		data := imageURL[comma+1:]
+		// header 形如 "image/jpeg;base64"
+		mime := header
+		if idx := strings.Index(header, ";"); idx >= 0 {
+			mime = header[:idx]
+		}
+		if mime == "" {
+			mime = "image/jpeg"
+		}
+		return mime, data, nil
+	}
+	// 走 HTTP 抓
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(imageURL)
+	if err != nil {
+		return "", "", fmt.Errorf("fetch image: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", "", fmt.Errorf("fetch image: HTTP %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", "", fmt.Errorf("read image body: %w", err)
+	}
+	mime := resp.Header.Get("Content-Type")
+	if mime == "" {
+		mime = http.DetectContentType(body)
+	}
+	return mime, base64.StdEncoding.EncodeToString(body), nil
 }
 
 func (s *AIService) SaveUserMessage(userID uint, content, threadID string) (*models.AIChatMessage, error) {
