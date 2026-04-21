@@ -77,16 +77,32 @@ build_web() {
 }
 
 ensure_static_server() {
-    if curl -sf "${FRONTEND_URL}/flutter_bootstrap.js" > /dev/null 2>&1; then
-        echo -e "${GREEN}✓ 静态服务器已在 ${FRONTEND_URL}，复用${NC}"
+    # 复用前做个响应性探活：能在 2s 内返回 2.8MB 的 main.dart.js 才算健康。
+    # 否则（通常是跑久了的 python http.server 卡住）杀掉重启。
+    if curl -sf --max-time 2 "${FRONTEND_URL}/flutter_bootstrap.js" > /dev/null 2>&1 \
+        && curl -sf --max-time 5 -o /dev/null "${FRONTEND_URL}/main.dart.js" 2>/dev/null; then
+        echo -e "${GREEN}✓ 静态服务器已在 ${FRONTEND_URL}，健康，复用${NC}"
         return
     fi
+
+    # 端口被占但响应不健康：把占用者清掉再起
+    existing_pid=$(ss -tlnp 2>/dev/null | awk -v p=":${FRONTEND_PORT}\\b" \
+        '$0 ~ p {match($0, /pid=[0-9]+/); if (RLENGTH>0) print substr($0, RSTART+4, RLENGTH-4)}' \
+        | head -1)
+    if [ -n "$existing_pid" ]; then
+        echo -e "${YELLOW}⚠ ${FRONTEND_URL} 上有进程 (pid=$existing_pid) 但响应不健康，结束它...${NC}"
+        kill "$existing_pid" 2>/dev/null || true
+        sleep 1
+        kill -9 "$existing_pid" 2>/dev/null || true
+        sleep 1
+    fi
+
     if [ ! -f build/web/index.html ]; then
         echo -e "${RED}✗ 找不到 build/web/index.html，请先 build（去掉 --skip-build）${NC}"
         exit 1
     fi
-    echo -e "${YELLOW}🚀 起静态服务器 python3 -m http.server ${FRONTEND_PORT}...${NC}"
-    python3 -m http.server "$FRONTEND_PORT" --directory build/web > /tmp/e2e_static_srv.log 2>&1 &
+    echo -e "${YELLOW}🚀 起静态服务器 node tests/static_server.js (port ${FRONTEND_PORT})...${NC}"
+    PORT="$FRONTEND_PORT" node tests/static_server.js > /tmp/e2e_static_srv.log 2>&1 &
     STATIC_SRV_PID=$!
     STARTED_STATIC_SRV=true
     # 等待就绪
