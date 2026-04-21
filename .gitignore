@@ -114,6 +114,9 @@ frontend/debug_*.js
 frontend/test_ai_*.js
 frontend/test_tabs.js
 
+# Claude Code local workspace
+.claude/
+
 # macOS
 .DS_Store
 
