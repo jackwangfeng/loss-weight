@@ -12,6 +12,9 @@ module.exports = {
     timeout: 10000
   },
   
+  // 测试文件匹配规则（同时支持 foo.test.js 和 foo_test.js）
+  testMatch: /.*(_test|\.test|\.spec)\.[cm]?[jt]sx?$/,
+
   // 测试失败后重试次数
   retries: 0,
   

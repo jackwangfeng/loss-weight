@@ -1,10 +1,17 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:provider/provider.dart';
 import 'providers/user_provider.dart';
 import 'providers/auth_provider.dart';
 import 'screens/home_screen.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Web 端强制开启 Semantics，让 Playwright/Cypress 能通过 aria 选中元素
+  if (kIsWeb) {
+    SemanticsBinding.instance.ensureSemantics();
+  }
   runApp(const LossWeightApp());
 }
 

@@ -48,6 +48,34 @@ test.describe('Flutter Web Canvas 测试', () => {
   });
 });
 
+test.describe('Semantics 交互测试', () => {
+  // 等 Flutter 的 Semantics 树生成出至少 N 个 tab
+  async function waitForTabs(page, minCount = 5) {
+    await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+    await page.waitForFunction(
+      (n) => document.querySelectorAll('flt-semantics[role="tab"]').length >= n,
+      minCount,
+      { timeout: 15000 }
+    );
+  }
+
+  test('底部导航应该有 5 个 tab', async ({ page }) => {
+    await waitForTabs(page);
+    for (const name of ['首页', '饮食', '体重', 'AI', '我的']) {
+      await expect(page.getByRole('tab', { name, exact: false })).toBeVisible();
+    }
+  });
+
+  test('点击 AI tab 应该切到 AI 界面', async ({ page }) => {
+    await waitForTabs(page);
+    await page.getByRole('tab', { name: 'AI', exact: true }).click();
+    // 选中态变化 + AI 界面特有按钮出现
+    await expect(page.locator('flt-semantics[role="tab"][aria-selected="true"]'))
+      .toHaveAttribute('aria-label', /AI/, { timeout: 5000 });
+    await expect(page.getByText('新建对话')).toBeVisible({ timeout: 5000 });
+  });
+});
+
 test.describe('后端 API 测试', () => {
   test('后端健康检查', async ({ request }) => {
     const response = await request.get('http://localhost:8000/health');
