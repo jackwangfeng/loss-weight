@@ -24,7 +24,7 @@ class UserService {
       if (unionid != null) 'unionid': unionid,
       'avatar': avatar,
       'gender': gender,
-      if (birthday != null) 'birthday': birthday.toIso8601String(),
+      if (birthday != null) 'birthday': DateTime.utc(birthday.year, birthday.month, birthday.day).toIso8601String(),
       'height': height,
       'current_weight': currentWeight,
       'target_weight': targetWeight,
@@ -65,7 +65,7 @@ class UserService {
     if (nickname != null) data['nickname'] = nickname;
     if (avatar != null) data['avatar'] = avatar;
     if (gender != null) data['gender'] = gender;
-    if (birthday != null) data['birthday'] = birthday.toIso8601String();
+    if (birthday != null) data['birthday'] = DateTime.utc(birthday.year, birthday.month, birthday.day).toIso8601String();
     if (height != null) data['height'] = height;
     if (currentWeight != null) data['current_weight'] = currentWeight;
     if (targetWeight != null) data['target_weight'] = targetWeight;

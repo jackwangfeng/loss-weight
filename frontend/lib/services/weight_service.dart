@@ -23,7 +23,7 @@ class WeightService {
       'water': water,
       'bmi': bmi,
       'note': note,
-      'measured_at': (measuredAt ?? DateTime.now()).toIso8601String(),
+      'measured_at': (measuredAt ?? DateTime.now()).toUtc().toIso8601String(),
     });
 
     if (response.statusCode == 201) {
@@ -100,7 +100,7 @@ class WeightService {
     if (water != null) body['water'] = water;
     if (bmi != null) body['bmi'] = bmi;
     if (note != null) body['note'] = note;
-    if (measuredAt != null) body['measured_at'] = measuredAt.toIso8601String();
+    if (measuredAt != null) body['measured_at'] = measuredAt.toUtc().toIso8601String();
 
     final response = await _apiService.put('/weight/record/$id', body);
 

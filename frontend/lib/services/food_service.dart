@@ -31,7 +31,7 @@ class FoodService {
       'portion': portion,
       'unit': unit,
       'meal_type': mealType,
-      if (eatenAt != null) 'eaten_at': eatenAt.toIso8601String(),
+      if (eatenAt != null) 'eaten_at': eatenAt.toUtc().toIso8601String(),
     };
 
     final response = await _apiService.post('/food/record', data);
@@ -111,7 +111,7 @@ class FoodService {
     if (fat != null) data['fat'] = fat;
     if (fiber != null) data['fiber'] = fiber;
     if (mealType != null) data['meal_type'] = mealType;
-    if (eatenAt != null) data['eaten_at'] = eatenAt.toIso8601String();
+    if (eatenAt != null) data['eaten_at'] = eatenAt.toUtc().toIso8601String();
 
     final response = await _apiService.put('/food/record/$recordId', data);
     return FoodRecord.fromJson(response.data);

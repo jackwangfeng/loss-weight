@@ -23,7 +23,7 @@ class ExerciseService {
       'calories_burned': caloriesBurned,
       'distance': distance,
       'notes': notes,
-      if (exercisedAt != null) 'exercised_at': exercisedAt.toIso8601String(),
+      if (exercisedAt != null) 'exercised_at': exercisedAt.toUtc().toIso8601String(),
     };
     final r = await _apiService.post('/exercise/record', data);
     return ExerciseRecord.fromJson(r.data);
@@ -71,7 +71,7 @@ class ExerciseService {
     if (caloriesBurned != null) data['calories_burned'] = caloriesBurned;
     if (distance != null) data['distance'] = distance;
     if (notes != null) data['notes'] = notes;
-    if (exercisedAt != null) data['exercised_at'] = exercisedAt.toIso8601String();
+    if (exercisedAt != null) data['exercised_at'] = exercisedAt.toUtc().toIso8601String();
     final r = await _apiService.put('/exercise/record/$id', data);
     return ExerciseRecord.fromJson(r.data);
   }
