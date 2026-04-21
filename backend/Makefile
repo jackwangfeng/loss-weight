@@ -16,7 +16,13 @@ local:
 	@SKIP_SMS_VERIFY=true go run cmd/server/main.go -config config.test.yaml
 
 # 本地开发模式（启用 Gemini AI）
+# 需要先 export GEMINI_API_KEY=xxx；可选 VISION_API_KEY（默认复用 GEMINI_API_KEY）
 local-gemini:
+	@if [ -z "$$GEMINI_API_KEY" ]; then \
+		echo "❌ 缺少环境变量 GEMINI_API_KEY"; \
+		echo "   请先执行：export GEMINI_API_KEY=your-key"; \
+		exit 1; \
+	fi
 	@echo "🚀 启动本地开发服务器（Gemini AI 模式）..."
 	@echo "⚠️  注意：当前为测试模式，跳过验证码校验，启用 Gemini AI"
 	@SKIP_SMS_VERIFY=true go run cmd/server/main.go -config config.gemini.yaml

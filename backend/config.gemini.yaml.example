@@ -1,26 +1,27 @@
-# Gemini API 配置
-# 请在这里配置你的 Gemini API Key
+# Gemini 本地开发配置模板
+#
+# 敏感 key 请通过环境变量注入，不要写到 yaml 里提交到 git：
+#   export GEMINI_API_KEY=your-real-key
+#   export VISION_API_KEY=your-real-key   # 可选，留空则复用 GEMINI_API_KEY
+#
+# 复制本文件为 config.gemini.yaml，按需修改非敏感字段。
+# config.gemini.yaml 已在 .gitignore 中忽略。
 
-# Gemini API Key (必需) - 请替换为你的真实 API Key
-gemini_api_key: "YOUR_GEMINI_API_KEY_HERE"
+# Gemini API URL（可选，默认使用官方地址）
+gemini_api_url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
-# Gemini API URL (可选，默认使用官方地址)
-gemini_api_url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
+# Vision API URL（用于食物识别）
+vision_api_url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
-# Vision API 配置 (用于食物识别，可选 - 如果为空则使用 gemini_api_key)
-vision_api_key: ""
-vision_api_url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent"
-
-# 其他配置
+# 基础配置
 project_name: "Loss Weight AI"
 version: "1.0.0"
 api_prefix: "/v1"
 port: 8000
 debug: true
 
-# 数据库配置
+# 数据库
 database_url: "sqlite:///tmp/loss_weight.db"
 
-# JWT 配置
-secret_key: "your-secret-key-change-in-production"
+# JWT
 jwt_expire_days: 7

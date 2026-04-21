@@ -50,6 +50,15 @@ func Load(configPath string) (*Config, error) {
 	// Read environment variables
 	viper.AutomaticEnv()
 
+	// 显式绑定敏感 key 到环境变量（优先级高于 yaml）
+	_ = viper.BindEnv("gemini_api_key", "GEMINI_API_KEY")
+	_ = viper.BindEnv("gemini_api_url", "GEMINI_API_URL")
+	_ = viper.BindEnv("vision_api_key", "VISION_API_KEY")
+	_ = viper.BindEnv("vision_api_url", "VISION_API_URL")
+	_ = viper.BindEnv("openai_api_key", "OPENAI_API_KEY")
+	_ = viper.BindEnv("baidu_cv_api_key", "BAIDU_CV_API_KEY")
+	_ = viper.BindEnv("secret_key", "SECRET_KEY")
+
 	// Try to read config file (optional)
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
