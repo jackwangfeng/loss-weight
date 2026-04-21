@@ -1,6 +1,7 @@
 package services
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -16,6 +17,14 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
+
+// StreamChunk 聊天流式输出的一帧。
+type StreamChunk struct {
+	Delta     string `json:"delta,omitempty"`
+	MessageID uint   `json:"message_id,omitempty"`
+	Error     string `json:"error,omitempty"`
+	Done      bool   `json:"done,omitempty"`
+}
 
 // Gemini 默认端点（gemini-pro 已被 Google 下线）。可通过 config 的
 // gemini_api_url / vision_api_url 覆盖。
@@ -825,6 +834,227 @@ func (s *AIService) callLLM(messages []ChatMessage) (*ChatMessage, error) {
 	}, nil
 }
 
+// callLLMStream: 调 Gemini streamGenerateContent?alt=sse，按增量文本往 channel 里喂。
+// channel 关闭意味着 stream 结束（正常或错误，Err 字段里带信息）。
+func (s *AIService) callLLMStream(ctx context.Context, messages []ChatMessage) (<-chan StreamChunk, error) {
+	apiURL := s.llmAPIURL
+	if apiURL == "" {
+		apiURL = defaultGeminiURL
+	}
+	streamURL := strings.Replace(apiURL, ":generateContent", ":streamGenerateContent", 1)
+
+	var contents []map[string]interface{}
+	var systemTexts []string
+	for _, msg := range messages {
+		if msg.Role == "system" {
+			systemTexts = append(systemTexts, msg.Content)
+			continue
+		}
+		role := "user"
+		if msg.Role == "assistant" {
+			role = "model"
+		}
+		contents = append(contents, map[string]interface{}{
+			"role":  role,
+			"parts": []map[string]string{{"text": msg.Content}},
+		})
+	}
+	payload := map[string]interface{}{
+		"contents": contents,
+		"generationConfig": map[string]interface{}{
+			"temperature":     0.7,
+			"maxOutputTokens": 4096,
+		},
+	}
+	if len(systemTexts) > 0 {
+		payload["systemInstruction"] = map[string]interface{}{
+			"parts": []map[string]string{{"text": strings.Join(systemTexts, "\n\n")}},
+		}
+	}
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	url := fmt.Sprintf("%s?key=%s&alt=sse", streamURL, s.llmAPIKey)
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	// 流式不设总超时；依赖 ctx 取消
+	client := &http.Client{}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("stream request: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return nil, fmt.Errorf("LLM stream API %d: %s", resp.StatusCode, string(body))
+	}
+
+	out := make(chan StreamChunk, 16)
+	go func() {
+		defer close(out)
+		defer resp.Body.Close()
+
+		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			data := strings.TrimPrefix(line, "data: ")
+			if data == "" || data == "[DONE]" {
+				continue
+			}
+			var parsed struct {
+				Candidates []struct {
+					Content struct {
+						Parts []struct {
+							Text string `json:"text"`
+						} `json:"parts"`
+					} `json:"content"`
+				} `json:"candidates"`
+			}
+			if err := json.Unmarshal([]byte(data), &parsed); err != nil {
+				s.logger.Warn("stream chunk parse", zap.Error(err))
+				continue
+			}
+			for _, cand := range parsed.Candidates {
+				for _, part := range cand.Content.Parts {
+					if part.Text == "" {
+						continue
+					}
+					select {
+					case out <- StreamChunk{Delta: part.Text}:
+					case <-ctx.Done():
+						return
+					}
+				}
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			select {
+			case out <- StreamChunk{Error: err.Error()}:
+			default:
+			}
+		}
+	}()
+	return out, nil
+}
+
+// ChatStream: 流式版 Chat。客户端收到的 chunks:
+//   - 多个 {delta: "片段"}
+//   - 最后一个 {done: true, message_id: N}
+//
+// 出错时最后一帧带 error 字段。
+func (s *AIService) ChatStream(ctx context.Context, req *ChatRequest) (<-chan StreamChunk, error) {
+	if len(req.Messages) == 0 {
+		return nil, errors.New("messages cannot be empty")
+	}
+	last := req.Messages[len(req.Messages)-1]
+	if last.Role != "user" || last.Content == "" {
+		return nil, errors.New("last message must be non-empty user message")
+	}
+
+	// 存用户消息（和 Chat 一致）
+	userMsg := &models.AIChatMessage{
+		UserID:   req.UserID,
+		Role:     "user",
+		Content:  last.Content,
+		ThreadID: req.ThreadID,
+	}
+	if err := s.db.Create(userMsg).Error; err != nil {
+		s.logger.Error("save user message failed", zap.Error(err))
+	} else {
+		s.embedMessageAsync(userMsg.ID, userMsg.Content)
+	}
+
+	// mock 降级
+	if s.llmAPIKey == "" {
+		if !s.allowMock {
+			return nil, errLLMNotConfigured
+		}
+		out := make(chan StreamChunk, 2)
+		go func() {
+			defer close(out)
+			text := "你好！我是你的 AI 减肥助手。有什么我可以帮助你的吗？"
+			out <- StreamChunk{Delta: text}
+			m := &models.AIChatMessage{
+				UserID: req.UserID, Role: "assistant",
+				Content: text, ThreadID: req.ThreadID,
+			}
+			_ = s.db.Create(m).Error
+			out <- StreamChunk{Done: true, MessageID: m.ID}
+		}()
+		return out, nil
+	}
+
+	messages, err := s.assembleChatMessages(req.UserID, req.ThreadID, last.Content)
+	if err != nil {
+		return nil, err
+	}
+
+	upstream, err := s.callLLMStream(ctx, messages)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(chan StreamChunk, 16)
+	go func() {
+		defer close(out)
+		var sb strings.Builder
+		for chunk := range upstream {
+			if chunk.Error != "" {
+				select {
+				case out <- chunk:
+				case <-ctx.Done():
+				}
+				return
+			}
+			if chunk.Delta != "" {
+				sb.WriteString(chunk.Delta)
+				select {
+				case out <- chunk:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+		full := sb.String()
+		if full == "" {
+			select {
+			case out <- StreamChunk{Done: true, Error: "LLM 返回为空"}:
+			case <-ctx.Done():
+			}
+			return
+		}
+		m := &models.AIChatMessage{
+			UserID: req.UserID, Role: "assistant",
+			Content: full, ThreadID: req.ThreadID,
+		}
+		if err := s.db.Create(m).Error; err != nil {
+			s.logger.Error("save assistant message failed", zap.Error(err))
+			select {
+			case out <- StreamChunk{Done: true, Error: "保存失败"}:
+			case <-ctx.Done():
+			}
+			return
+		}
+		s.embedMessageAsync(m.ID, m.Content)
+		go s.maybeTriggerBackgroundTasks(req.UserID, req.ThreadID)
+		select {
+		case out <- StreamChunk{Done: true, MessageID: m.ID}:
+		case <-ctx.Done():
+		}
+	}()
+	return out, nil
+}
+
 // fetchImageAsBase64 支持两种输入：
 //   - data URL：data:image/jpeg;base64,<payload>  → 直接拆出来
 //   - http(s) URL：用 HTTP GET 抓下来，探测/取 Content-Type 后 base64
@@ -882,6 +1112,22 @@ func (s *AIService) SaveUserMessage(userID uint, content, threadID string) (*mod
 	}
 
 	return msg, nil
+}
+
+// ListUserFacts 返回某用户在 user_facts 表里的全部事实（AI 长期记忆）
+func (s *AIService) ListUserFacts(userID uint) ([]models.UserFact, error) {
+	var facts []models.UserFact
+	if err := s.db.Where("user_id = ?", userID).
+		Order("confidence DESC, updated_at DESC").
+		Find(&facts).Error; err != nil {
+		return nil, err
+	}
+	return facts, nil
+}
+
+// DeleteUserFact 删除单条事实（用户手动管理记忆）
+func (s *AIService) DeleteUserFact(id uint) error {
+	return s.db.Delete(&models.UserFact{}, id).Error
 }
 
 func (s *AIService) GetChatHistory(userID uint, threadID string, limit int) ([]models.AIChatMessage, error) {

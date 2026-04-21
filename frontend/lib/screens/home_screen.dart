@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/user_provider.dart';
@@ -7,6 +8,12 @@ import 'records_screen.dart';
 import 'ai_screen.dart';
 import 'profile_screen.dart';
 import '../services/ai_service.dart';
+import '../services/food_service.dart';
+import '../services/exercise_service.dart';
+import '../services/weight_service.dart';
+import '../models/food_record.dart';
+import '../models/exercise_record.dart';
+import '../models/weight_record.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -134,108 +141,21 @@ class DashboardScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // AI 今日简报卡（最新最重要的）
+            // AI 今日简报卡
             _DailyBriefCard(userId: user.id, onChatTap: () {
               final homeState = context.findAncestorStateOfType<_HomeScreenState>();
               homeState?.setState(() {
-                homeState._selectedIndex = 2; // AI tab（记录/AI/我的 中 AI 是 index 2）
+                homeState._selectedIndex = 2;
               });
             }),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildStatCard(
-                    context,
-                    '当前体重',
-                    '${(user.currentWeight ?? 0).toStringAsFixed(1)} kg',
-                    Icons.monitor_weight,
-                    Colors.blue,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildStatCard(
-                    context,
-                    '目标体重',
-                    '${(user.targetWeight ?? 0).toStringAsFixed(1)} kg',
-                    Icons.flag,
-                    Colors.green,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildStatCard(
-                    context,
-                    'BMI',
-                    (user.bmi ?? 0).toStringAsFixed(1),
-                    Icons.analytics,
-                    Colors.orange,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildStatCard(
-                    context,
-                    '已减',
-                    '${(user.weightLoss ?? 0).abs().toStringAsFixed(1)} kg',
-                    Icons.trending_down,
-                    Colors.red,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            Text(
-              '快捷操作',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildQuickAction(
-                    context,
-                    '记录饮食',
-                    Icons.restaurant,
-                    Colors.orange,
-                    () {
-                      context.findAncestorStateOfType<_HomeScreenState>()
-                          ?.jumpToRecords(0);
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildQuickAction(
-                    context,
-                    '记录运动',
-                    Icons.directions_run,
-                    Colors.red,
-                    () {
-                      context.findAncestorStateOfType<_HomeScreenState>()
-                          ?.jumpToRecords(1);
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildQuickAction(
-                    context,
-                    '记录体重',
-                    Icons.monitor_weight,
-                    Colors.blue,
-                    () {
-                      context.findAncestorStateOfType<_HomeScreenState>()
-                          ?.jumpToRecords(2);
-                    },
-                  ),
-                ),
-              ],
+            // 最近记录时间轴
+            _RecentTimeline(
+              userId: user.id,
+              onTap: (kind) {
+                final homeState = context.findAncestorStateOfType<_HomeScreenState>();
+                homeState?.jumpToRecords(kind);
+              },
             ),
           ],
         ),
@@ -297,69 +217,6 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildStatCard(
-    BuildContext context,
-    String title,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, size: 20, color: color),
-                const SizedBox(width: 8),
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildQuickAction(
-    BuildContext context,
-    String title,
-    IconData icon,
-    Color color,
-    VoidCallback onPressed,
-  ) {
-    return Card(
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Icon(icon, color: color),
-              const SizedBox(width: 12),
-              Text(
-                title,
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 // ============================================================================
@@ -450,10 +307,16 @@ class _DailyBriefCardState extends State<_DailyBriefCard> {
               ),
               if ((_data!['brief'] ?? '').toString().isNotEmpty) ...[
                 const SizedBox(height: 14),
-                Text(
-                  _data!['brief'].toString(),
-                  style: const TextStyle(
-                      fontSize: 14, color: Colors.black87, height: 1.5),
+                MarkdownBody(
+                  data: _data!['brief'].toString(),
+                  softLineBreak: true,
+                  styleSheet: MarkdownStyleSheet(
+                    p: const TextStyle(
+                        fontSize: 14, color: Colors.black87, height: 1.5),
+                    strong: const TextStyle(
+                        fontSize: 14, color: Colors.black87, fontWeight: FontWeight.w600),
+                    blockSpacing: 4,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Align(
@@ -528,4 +391,181 @@ class _DailyBriefCardState extends State<_DailyBriefCard> {
         padding: EdgeInsets.only(right: 6, top: 10),
         child: Icon(Icons.arrow_right_alt, size: 16, color: Colors.grey),
       );
+}
+
+// ============================================================================
+//  最近记录时间轴
+//  把 food / exercise / weight 三路合并按时间排序，只显示最近 N 条。
+//  点击某条跳到对应 tab。
+// ============================================================================
+
+class _RecentTimeline extends StatefulWidget {
+  final int userId;
+  /// kind: 0=饮食 1=运动 2=体重
+  final void Function(int kind) onTap;
+  const _RecentTimeline({required this.userId, required this.onTap});
+  @override
+  State<_RecentTimeline> createState() => _RecentTimelineState();
+}
+
+class _TimelineItem {
+  final DateTime at;
+  final int kind;
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String subtitle;
+  _TimelineItem({
+    required this.at,
+    required this.kind,
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.subtitle,
+  });
+}
+
+class _RecentTimelineState extends State<_RecentTimeline> {
+  final _foodSvc = FoodService();
+  final _exerciseSvc = ExerciseService();
+  final _weightSvc = WeightService();
+  List<_TimelineItem> _items = [];
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final results = await Future.wait([
+        _foodSvc.getRecords(userId: widget.userId),
+        _exerciseSvc.getRecords(userId: widget.userId),
+        _weightSvc.getRecords(userId: widget.userId),
+      ]);
+      final items = <_TimelineItem>[];
+      for (final r in (results[0] as List<FoodRecord>)) {
+        items.add(_TimelineItem(
+          at: r.eatenAt,
+          kind: 0,
+          icon: Icons.restaurant,
+          color: Colors.orange,
+          title: r.foodName,
+          subtitle: '${r.calories.toStringAsFixed(0)} kcal · ${r.mealTypeLabel}',
+        ));
+      }
+      for (final r in (results[1] as List<ExerciseRecord>)) {
+        items.add(_TimelineItem(
+          at: r.exercisedAt,
+          kind: 1,
+          icon: Icons.directions_run,
+          color: Colors.red,
+          title: r.type,
+          subtitle: '${r.durationMin} 分钟 · ${r.caloriesBurned.toStringAsFixed(0)} kcal',
+        ));
+      }
+      for (final r in (results[2] as List<WeightRecord>)) {
+        items.add(_TimelineItem(
+          at: r.measuredAt,
+          kind: 2,
+          icon: Icons.monitor_weight,
+          color: Colors.blue,
+          title: '${r.weight.toStringAsFixed(1)} kg',
+          subtitle: r.note.isEmpty ? '称重' : '称重 · ${r.note}',
+        ));
+      }
+      items.sort((a, b) => b.at.compareTo(a.at));
+      _items = items.take(6).toList();
+    } catch (_) {
+      // 静默，首页不应弹红 toast 吓人
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  String _relative(DateTime d) {
+    final now = DateTime.now();
+    final diff = now.difference(d);
+    if (diff.inSeconds < 60) return '刚刚';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} 分钟前';
+    if (diff.inHours < 24 && now.day == d.day) {
+      return '今天 ${d.hour.toString().padLeft(2, "0")}:${d.minute.toString().padLeft(2, "0")}';
+    }
+    if (diff.inDays == 1 ||
+        (diff.inHours < 48 && now.day - d.day == 1)) {
+      return '昨天 ${d.hour.toString().padLeft(2, "0")}:${d.minute.toString().padLeft(2, "0")}';
+    }
+    if (diff.inDays < 7) return '${diff.inDays} 天前';
+    return '${d.month}/${d.day}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+              child: Row(
+                children: [
+                  Icon(Icons.history, size: 16, color: Colors.grey[700]),
+                  const SizedBox(width: 6),
+                  Text('最近记录',
+                      style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[800],
+                          fontWeight: FontWeight.w600)),
+                  const Spacer(),
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    icon: const Icon(Icons.refresh, size: 18),
+                    onPressed: _loading ? null : _load,
+                  ),
+                ],
+              ),
+            ),
+            if (_loading && _items.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_items.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Center(
+                  child: Text('还没有记录，去 "记录" 页开始吧',
+                      style: TextStyle(color: Colors.grey[600])),
+                ),
+              )
+            else
+              for (final item in _items)
+                ListTile(
+                  dense: true,
+                  leading: CircleAvatar(
+                    radius: 16,
+                    backgroundColor: item.color.withValues(alpha: 0.15),
+                    child: Icon(item.icon, size: 16, color: item.color),
+                  ),
+                  title: Text(item.title,
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: Text(item.subtitle,
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                  trailing: Text(_relative(item.at),
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                  onTap: () => widget.onTap(item.kind),
+                ),
+          ],
+        ),
+      ),
+    );
+  }
 }

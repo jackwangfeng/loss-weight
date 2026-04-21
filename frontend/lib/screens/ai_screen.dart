@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import '../providers/auth_provider.dart';
@@ -194,7 +195,7 @@ class _AISScreenState extends State<AIScreen> {
       return;
     }
 
-    // 乐观更新：立刻把用户消息加到列表里（id 用负值占位，拿到真实 id 前不会冲突）
+    // 乐观更新：立刻把用户消息加到列表里
     final userId = userProvider.currentUser?.id ?? authProvider.userId;
     if (userId == null) return;
     final localUserMsg = AIChatMessage(
@@ -205,30 +206,87 @@ class _AISScreenState extends State<AIScreen> {
       threadId: _currentThread!.id.toString(),
       createdAt: DateTime.now(),
     );
+    // 流式占位：assistant 空消息，边收 delta 边替换
+    const streamingId = -1;
+    final streamingStub = AIChatMessage(
+      id: streamingId,
+      userId: userId,
+      role: 'assistant',
+      content: '',
+      threadId: _currentThread!.id.toString(),
+      createdAt: DateTime.now(),
+    );
     setState(() {
       _messages.add(localUserMsg);
+      _messages.add(streamingStub);
       _messageController.clear();
       _isTyping = true;
     });
     _scrollToBottom();
 
+    final buf = StringBuffer();
+    var firstDelta = true;
     try {
-      final response = await _aiService.chat(
+      await for (final chunk in _aiService.chatStream(
         userId: userId,
         message: message,
         threadId: _currentThread!.id.toString(),
-      );
-
-      setState(() {
-        _messages.add(response);
-        _isTyping = false;
-      });
-      _scrollToBottom();
+      )) {
+        final err = chunk['error'] as String?;
+        if (err != null && err.isNotEmpty) {
+          throw Exception(err);
+        }
+        final delta = chunk['delta'] as String?;
+        if (delta != null && delta.isNotEmpty) {
+          buf.write(delta);
+          if (!mounted) return;
+          setState(() {
+            if (firstDelta) {
+              _isTyping = false; // 有内容了就不再显示打字圆点
+              firstDelta = false;
+            }
+            final idx = _messages.indexWhere((m) => m.id == streamingId);
+            if (idx >= 0) {
+              _messages[idx] = AIChatMessage(
+                id: streamingId,
+                userId: userId,
+                role: 'assistant',
+                content: buf.toString(),
+                threadId: _currentThread!.id.toString(),
+                createdAt: _messages[idx].createdAt,
+              );
+            }
+          });
+          _scrollToBottom();
+        }
+        final done = chunk['done'] == true;
+        if (done) {
+          final mid = (chunk['message_id'] as num?)?.toInt() ?? streamingId;
+          if (!mounted) return;
+          setState(() {
+            _isTyping = false;
+            final idx = _messages.indexWhere((m) => m.id == streamingId);
+            if (idx >= 0) {
+              _messages[idx] = AIChatMessage(
+                id: mid,
+                userId: userId,
+                role: 'assistant',
+                content: buf.toString(),
+                threadId: _currentThread!.id.toString(),
+                createdAt: _messages[idx].createdAt,
+              );
+            }
+          });
+          _scrollToBottom();
+          break;
+        }
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
           _isTyping = false;
-          // 请求失败：把乐观的 user 消息也撤掉，避免误导
+          // 流式失败：把 placeholder 和用户乐观消息都撤回，避免误导
+          _messages.removeWhere((m) => m.id == streamingId);
           _messages.removeWhere((m) => m.id == localUserMsg.id);
         });
         ScaffoldMessenger.of(context).showSnackBar(
@@ -436,18 +494,36 @@ class _AISScreenState extends State<AIScreen> {
           ],
           Flexible(
             child: Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: isUser ? Colors.green : Colors.grey[200],
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: Text(
-                message.content,
-                style: TextStyle(
-                  color: isUser ? Colors.white : Colors.black87,
-                  fontSize: 15,
-                ),
-              ),
+              child: isUser
+                  ? Text(
+                      message.content,
+                      style: const TextStyle(color: Colors.white, fontSize: 15),
+                    )
+                  : MarkdownBody(
+                      data: message.content,
+                      softLineBreak: true,
+                      styleSheet: MarkdownStyleSheet(
+                        p: const TextStyle(color: Colors.black87, fontSize: 15, height: 1.5),
+                        strong: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600),
+                        listBullet: const TextStyle(color: Colors.black87, fontSize: 15),
+                        code: TextStyle(
+                          color: Colors.deepPurple[900],
+                          backgroundColor: Colors.deepPurple[50],
+                          fontFamily: 'monospace',
+                          fontSize: 13,
+                        ),
+                        codeblockDecoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        blockSpacing: 6,
+                      ),
+                    ),
             ),
           ),
           if (isUser) const SizedBox(width: 12),

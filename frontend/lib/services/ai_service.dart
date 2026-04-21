@@ -1,4 +1,8 @@
+import 'dart:async';
+import 'dart:convert';
+import 'package:dio/dio.dart';
 import '../models/ai_chat.dart';
+import '../models/user_fact.dart';
 import 'api_service.dart';
 
 class AIService {
@@ -22,6 +26,62 @@ class AIService {
       return AIChatMessage.fromJson(response.data);
     } else {
       throw Exception('AI 聊天失败');
+    }
+  }
+
+  /// 流式 AI 聊天。Stream 里每一项是一帧 {delta?, done?, message_id?, error?}。
+  /// Stream 结束时（done=true）可以从最后一帧拿 message_id。
+  Stream<Map<String, dynamic>> chatStream({
+    required int userId,
+    required String message,
+    String? threadId,
+  }) async* {
+    final dio = Dio(BaseOptions(
+      baseUrl: _apiService.baseUrl,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
+        if (_apiService.token != null) 'Authorization': 'Bearer ${_apiService.token}',
+      },
+    ));
+
+    final response = await dio.post<ResponseBody>(
+      '/ai/chat/stream',
+      data: {
+        'user_id': userId,
+        'messages': [
+          {'role': 'user', 'content': message},
+        ],
+        if (threadId != null) 'thread_id': threadId,
+      },
+      options: Options(
+        responseType: ResponseType.stream,
+      ),
+    );
+
+    final body = response.data;
+    if (body == null) return;
+
+    // SSE 逐行解析：每帧 `data: {...}\n\n`
+    String buffer = '';
+    await for (final bytes in body.stream) {
+      buffer += utf8.decode(bytes, allowMalformed: true);
+      while (true) {
+        final idx = buffer.indexOf('\n\n');
+        if (idx < 0) break;
+        final raw = buffer.substring(0, idx);
+        buffer = buffer.substring(idx + 2);
+        for (final line in raw.split('\n')) {
+          if (!line.startsWith('data: ')) continue;
+          final data = line.substring(6);
+          if (data.isEmpty) continue;
+          try {
+            yield json.decode(data) as Map<String, dynamic>;
+          } catch (_) {
+            // 忽略坏帧
+          }
+        }
+      }
     }
   }
 
@@ -137,6 +197,21 @@ class AIService {
     } else {
       throw Exception('体重解析失败');
     }
+  }
+
+  /// 列出用户长期记忆事实
+  Future<List<UserFact>> listUserFacts({required int userId}) async {
+    final response = await _apiService.get(
+      '/ai/facts',
+      queryParameters: {'user_id': userId.toString()},
+    );
+    final list = (response.data['facts'] as List? ?? []);
+    return list.map((e) => UserFact.fromJson(e)).toList();
+  }
+
+  /// 删除某条长期记忆
+  Future<void> deleteUserFact(int id) async {
+    await _apiService.delete('/ai/facts/$id');
   }
 
   /// 今日 AI 简报：用于首页顶部卡片

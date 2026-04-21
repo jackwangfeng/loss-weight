@@ -88,9 +88,12 @@ func SetupAIRoutes(v1 *gin.RouterGroup, db *gorm.DB, logger *zap.Logger, cfg *co
 		ai.POST("/daily-brief", aiHandler.GetDailyBrief)
 		ai.POST("/encouragement", aiHandler.GetEncouragement)
 		ai.POST("/chat", aiHandler.Chat)
+		ai.POST("/chat/stream", aiHandler.ChatStream)
 		ai.GET("/chat/history", aiHandler.GetChatHistory)
 		ai.POST("/chat/thread", aiHandler.CreateThread)
 		ai.GET("/chat/threads", aiHandler.GetUserThreads)
+		ai.GET("/facts", aiHandler.ListFacts)
+		ai.DELETE("/facts/:id", aiHandler.DeleteFact)
 	}
 }
 

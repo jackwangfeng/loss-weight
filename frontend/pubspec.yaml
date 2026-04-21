@@ -51,6 +51,9 @@ dependencies:
   # Voice input（语音转文字，iOS/Android/Web 三端通吃，web 走浏览器 SpeechRecognition）
   speech_to_text: ^6.6.0
 
+  # Markdown 渲染（AI 回复里的 **加粗**、列表、代码块）
+  flutter_markdown: ^0.7.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

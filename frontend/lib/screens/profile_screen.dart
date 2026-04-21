@@ -5,6 +5,7 @@ import '../providers/auth_provider.dart';
 import '../providers/user_provider.dart';
 import '../models/user_profile.dart';
 import 'login_screen.dart';
+import 'ai_memory_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -97,7 +98,20 @@ class ProfileScreen extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
+        Card(
+          child: ListTile(
+            leading: Icon(Icons.auto_awesome, color: Colors.green[700]),
+            title: const Text('AI 眼中的我'),
+            subtitle: const Text('查看/管理 AI 从对话里记住的事实'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AIMemoryScreen()),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
         SizedBox(
           height: 48,
           child: FilledButton.icon(

@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -133,6 +136,74 @@ func (h *AIHandler) Chat(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, result)
+}
+
+// ChatStream SSE 端点，按片段推送 Gemini 的增量响应。
+// 前端 EventSource / fetch stream 消费。每帧是 JSON:
+//   - {"delta": "片段文本"}
+//   - {"done": true, "message_id": 123}
+//   - 错误时：{"done": true, "error": "消息"}
+func (h *AIHandler) ChatStream(c *gin.Context) {
+	var req services.ChatRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	stream, err := h.service.ChatStream(c.Request.Context(), &req)
+	if err != nil {
+		h.logger.Error("chat stream init failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no") // 绕过 nginx 缓冲
+
+	c.Stream(func(w io.Writer) bool {
+		chunk, ok := <-stream
+		if !ok {
+			return false
+		}
+		data, _ := json.Marshal(chunk)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		if chunk.Done {
+			return false
+		}
+		return true
+	})
+}
+
+func (h *AIHandler) ListFacts(c *gin.Context) {
+	userIDStr := c.Query("user_id")
+	userID, err := strconv.ParseUint(userIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的 user_id"})
+		return
+	}
+	facts, err := h.service.ListUserFacts(uint(userID))
+	if err != nil {
+		h.logger.Error("list facts failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取事实失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"facts": facts, "count": len(facts)})
+}
+
+func (h *AIHandler) DeleteFact(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的 id"})
+		return
+	}
+	if err := h.service.DeleteUserFact(uint(id)); err != nil {
+		h.logger.Error("delete fact failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "已删除"})
 }
 
 func (h *AIHandler) GetChatHistory(c *gin.Context) {

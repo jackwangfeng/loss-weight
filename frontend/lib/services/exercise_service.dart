@@ -54,6 +54,28 @@ class ExerciseService {
     return r.data as Map<String, dynamic>;
   }
 
+  /// 更新运动记录
+  Future<ExerciseRecord> updateRecord(int id, {
+    String? type,
+    int? durationMin,
+    String? intensity,
+    double? caloriesBurned,
+    double? distance,
+    String? notes,
+    DateTime? exercisedAt,
+  }) async {
+    final data = <String, dynamic>{};
+    if (type != null) data['type'] = type;
+    if (durationMin != null) data['duration_min'] = durationMin;
+    if (intensity != null) data['intensity'] = intensity;
+    if (caloriesBurned != null) data['calories_burned'] = caloriesBurned;
+    if (distance != null) data['distance'] = distance;
+    if (notes != null) data['notes'] = notes;
+    if (exercisedAt != null) data['exercised_at'] = exercisedAt.toIso8601String();
+    final r = await _apiService.put('/exercise/record/$id', data);
+    return ExerciseRecord.fromJson(r.data);
+  }
+
   Future<void> deleteRecord(int id) async {
     await _apiService.delete('/exercise/record/$id');
   }

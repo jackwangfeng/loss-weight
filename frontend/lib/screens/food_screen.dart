@@ -124,6 +124,7 @@ class _FoodScreenState extends State<FoodScreen> {
           day: day,
           records: groups[day]!,
           onTap: (r) => _openAddSheet(prefill: r),
+          onDelete: _confirmAndDelete,
         ),
       ],
     );
@@ -165,6 +166,34 @@ class _FoodScreenState extends State<FoodScreen> {
     if (created == true) {
       await _loadRecords();
       _showBudgetToast();
+    }
+  }
+
+  Future<bool> _confirmAndDelete(FoodRecord r) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除这条记录？'),
+        content: Text('${r.foodName} · ${r.calories.toStringAsFixed(0)} kcal'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return false;
+    try {
+      await _foodService.deleteRecord(r.id);
+      await _loadRecords();
+      _showBudgetToast();
+      return true;
+    } catch (e) {
+      _toast('删除失败：$e');
+      return false;
     }
   }
 
@@ -283,8 +312,13 @@ class _DayGroup extends StatelessWidget {
   final DateTime day;
   final List<FoodRecord> records;
   final void Function(FoodRecord)? onTap;
-  const _DayGroup(
-      {required this.day, required this.records, this.onTap});
+  final Future<bool> Function(FoodRecord)? onDelete;
+  const _DayGroup({
+    required this.day,
+    required this.records,
+    this.onTap,
+    this.onDelete,
+  });
 
   String _label(DateTime d) {
     final now = DateTime.now();
@@ -316,38 +350,59 @@ class _DayGroup extends StatelessWidget {
           ),
         ),
         for (final r in records)
-          Card(
-            margin: const EdgeInsets.only(bottom: 8),
-            child: ListTile(
-              leading: CircleAvatar(
-                backgroundColor: _mealColor(r.mealType),
-                child: Icon(_mealIcon(r.mealType), color: Colors.white),
-              ),
-              title: Row(
-                children: [
-                  Flexible(child: Text(r.foodName,
-                      overflow: TextOverflow.ellipsis)),
-                  if (r.portionLabel.isNotEmpty) ...[
-                    const SizedBox(width: 6),
-                    Text('· ${r.portionLabel}',
-                        style: TextStyle(
-                            color: Colors.grey[600], fontSize: 13)),
+          Dismissible(
+            key: ValueKey('food-${r.id}'),
+            direction: onDelete == null
+                ? DismissDirection.none
+                : DismissDirection.endToStart,
+            confirmDismiss: onDelete == null
+                ? null
+                : (_) async => await onDelete!(r),
+            background: _swipeDeleteBg(),
+            child: Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: _mealColor(r.mealType),
+                  child: Icon(_mealIcon(r.mealType), color: Colors.white),
+                ),
+                title: Row(
+                  children: [
+                    Flexible(child: Text(r.foodName,
+                        overflow: TextOverflow.ellipsis)),
+                    if (r.portionLabel.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      Text('· ${r.portionLabel}',
+                          style: TextStyle(
+                              color: Colors.grey[600], fontSize: 13)),
+                    ],
                   ],
-                ],
+                ),
+                subtitle: Text(
+                    '${r.calories.toStringAsFixed(0)} kcal · ${r.mealTypeLabel}'
+                    '${r.protein > 0 ? "  蛋白${r.protein.toStringAsFixed(0)}g" : ""}'),
+                trailing: Text(
+                    '${r.eatenAt.hour.toString().padLeft(2, '0')}:'
+                    '${r.eatenAt.minute.toString().padLeft(2, '0')}',
+                    style: TextStyle(color: Colors.grey[600])),
+                onTap: onTap == null ? null : () => onTap!(r),
               ),
-              subtitle: Text(
-                  '${r.calories.toStringAsFixed(0)} kcal · ${r.mealTypeLabel}'
-                  '${r.protein > 0 ? "  蛋白${r.protein.toStringAsFixed(0)}g" : ""}'),
-              trailing: Text(
-                  '${r.eatenAt.hour.toString().padLeft(2, '0')}:'
-                  '${r.eatenAt.minute.toString().padLeft(2, '0')}',
-                  style: TextStyle(color: Colors.grey[600])),
-              onTap: onTap == null ? null : () => onTap!(r),
             ),
           ),
       ],
     );
   }
+
+  static Widget _swipeDeleteBg() => Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 24),
+        margin: const EdgeInsets.only(bottom: 8),
+        decoration: BoxDecoration(
+          color: Colors.red,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Icon(Icons.delete, color: Colors.white),
+      );
 
   static Color _mealColor(String m) {
     switch (m) {
@@ -567,22 +622,41 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
 
     setState(() => _submitting = true);
     try {
-      await widget.foodService.createRecord(
-        userId: widget.userId,
-        foodName: name,
-        calories: cal,
-        protein: double.tryParse(_proteinCtrl.text.trim()) ?? 0,
-        carbohydrates: double.tryParse(_carbsCtrl.text.trim()) ?? 0,
-        fat: double.tryParse(_fatCtrl.text.trim()) ?? 0,
-        portion: double.tryParse(_portionCtrl.text.trim()) ?? 0,
-        unit: _unit,
-        mealType: _mealType,
-        eatenAt: _eatenAt,
-      );
+      final protein = double.tryParse(_proteinCtrl.text.trim()) ?? 0;
+      final carbs = double.tryParse(_carbsCtrl.text.trim()) ?? 0;
+      final fat = double.tryParse(_fatCtrl.text.trim()) ?? 0;
+      final portion = double.tryParse(_portionCtrl.text.trim()) ?? 0;
+
+      if (widget.prefill != null) {
+        await widget.foodService.updateRecord(
+          widget.prefill!.id,
+          foodName: name,
+          calories: cal,
+          protein: protein,
+          carbohydrates: carbs,
+          fat: fat,
+          mealType: _mealType,
+          eatenAt: _eatenAt,
+        );
+      } else {
+        await widget.foodService.createRecord(
+          userId: widget.userId,
+          foodName: name,
+          calories: cal,
+          protein: protein,
+          carbohydrates: carbs,
+          fat: fat,
+          portion: portion,
+          unit: _unit,
+          mealType: _mealType,
+          eatenAt: _eatenAt,
+        );
+      }
       if (mounted) {
         Navigator.pop(context, true);
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('记录成功')));
+            .showSnackBar(SnackBar(
+                content: Text(widget.prefill == null ? '记录成功' : '更新成功')));
       }
     } catch (e) {
       _warn('保存失败：$e');
@@ -644,8 +718,8 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
     return [
       Row(
         children: [
-          const Text('添加饮食记录',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+          Text(widget.prefill == null ? '添加饮食记录' : '编辑饮食记录',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
           const Spacer(),
           IconButton(
             icon: const Icon(Icons.close),

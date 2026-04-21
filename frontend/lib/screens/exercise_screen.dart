@@ -112,9 +112,41 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
         _TodayCard(records: today),
         const SizedBox(height: 16),
         if (_records.isEmpty) _buildEmpty(),
-        for (final d in days) _DayGroup(day: d, records: groups[d]!),
+        for (final d in days) _DayGroup(
+          day: d,
+          records: groups[d]!,
+          onTap: (r) => _openAddSheet(prefill: r),
+          onDelete: _confirmAndDelete,
+        ),
       ],
     );
+  }
+
+  Future<bool> _confirmAndDelete(ExerciseRecord r) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除这条运动记录？'),
+        content: Text('${r.type} · ${r.durationMin} 分钟 · ${r.caloriesBurned.toStringAsFixed(0)} kcal'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return false;
+    try {
+      await _svc.deleteRecord(r.id);
+      await _load();
+      return true;
+    } catch (e) {
+      _toast('删除失败：$e');
+      return false;
+    }
   }
 
   Widget _buildEmpty() => Padding(
@@ -129,7 +161,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
         ),
       );
 
-  Future<void> _openAddSheet() async {
+  Future<void> _openAddSheet({ExerciseRecord? prefill}) async {
     final user = context.read<UserProvider>().currentUser;
     if (user == null) return _toast('请先登录');
     final created = await showModalBottomSheet<bool>(
@@ -141,6 +173,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
         exerciseService: _svc,
         aiService: _ai,
         frequentTypes: _frequentTypes(),
+        prefill: prefill,
       ),
     );
     if (created == true) {
@@ -224,7 +257,14 @@ class _TodayCard extends StatelessWidget {
 class _DayGroup extends StatelessWidget {
   final DateTime day;
   final List<ExerciseRecord> records;
-  const _DayGroup({required this.day, required this.records});
+  final void Function(ExerciseRecord)? onTap;
+  final Future<bool> Function(ExerciseRecord)? onDelete;
+  const _DayGroup({
+    required this.day,
+    required this.records,
+    this.onTap,
+    this.onDelete,
+  });
 
   String _label(DateTime d) {
     final now = DateTime.now();
@@ -274,30 +314,48 @@ class _DayGroup extends StatelessWidget {
           ),
         ),
         for (final r in records)
-          Card(
-            margin: const EdgeInsets.only(bottom: 8),
-            child: ListTile(
-              leading: CircleAvatar(
-                backgroundColor: _intensityColor(r.intensity),
-                child: Icon(_typeIcon(r.type), color: Colors.white),
+          Dismissible(
+            key: ValueKey('exercise-${r.id}'),
+            direction: onDelete == null
+                ? DismissDirection.none
+                : DismissDirection.endToStart,
+            confirmDismiss: onDelete == null ? null : (_) async => await onDelete!(r),
+            background: Container(
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.only(right: 24),
+              margin: const EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(
+                color: Colors.red,
+                borderRadius: BorderRadius.circular(12),
               ),
-              title: Row(
-                children: [
-                  Flexible(child: Text(r.type, overflow: TextOverflow.ellipsis)),
-                  if (r.distance > 0) ...[
-                    const SizedBox(width: 6),
-                    Text('· ${r.distance.toStringAsFixed(1)} km',
-                        style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+              child: const Icon(Icons.delete, color: Colors.white),
+            ),
+            child: Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                onTap: onTap == null ? null : () => onTap!(r),
+                leading: CircleAvatar(
+                  backgroundColor: _intensityColor(r.intensity),
+                  child: Icon(_typeIcon(r.type), color: Colors.white),
+                ),
+                title: Row(
+                  children: [
+                    Flexible(child: Text(r.type, overflow: TextOverflow.ellipsis)),
+                    if (r.distance > 0) ...[
+                      const SizedBox(width: 6),
+                      Text('· ${r.distance.toStringAsFixed(1)} km',
+                          style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                    ],
                   ],
-                ],
+                ),
+                subtitle: Text(
+                    '${r.durationMin} 分钟 · ${r.caloriesBurned.toStringAsFixed(0)} kcal'
+                    '${r.intensityLabel.isNotEmpty ? "  ${r.intensityLabel}" : ""}'),
+                trailing: Text(
+                    '${r.exercisedAt.hour.toString().padLeft(2, '0')}:'
+                    '${r.exercisedAt.minute.toString().padLeft(2, '0')}',
+                    style: TextStyle(color: Colors.grey[600])),
               ),
-              subtitle: Text(
-                  '${r.durationMin} 分钟 · ${r.caloriesBurned.toStringAsFixed(0)} kcal'
-                  '${r.intensityLabel.isNotEmpty ? "  ${r.intensityLabel}" : ""}'),
-              trailing: Text(
-                  '${r.exercisedAt.hour.toString().padLeft(2, '0')}:'
-                  '${r.exercisedAt.minute.toString().padLeft(2, '0')}',
-                  style: TextStyle(color: Colors.grey[600])),
             ),
           ),
       ],
@@ -314,11 +372,13 @@ class _AddExerciseSheet extends StatefulWidget {
   final ExerciseService exerciseService;
   final AIService aiService;
   final List<String> frequentTypes;
+  final ExerciseRecord? prefill;
   const _AddExerciseSheet({
     required this.userId,
     required this.exerciseService,
     required this.aiService,
     required this.frequentTypes,
+    this.prefill,
   });
   @override
   State<_AddExerciseSheet> createState() => _AddExerciseSheetState();
@@ -335,6 +395,21 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
   DateTime _exercisedAt = DateTime.now();
   bool _submitting = false;
   bool _aiLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final p = widget.prefill;
+    if (p != null) {
+      _typeCtrl.text = p.type;
+      _durationCtrl.text = p.durationMin.toString();
+      if (p.caloriesBurned > 0) _caloriesCtrl.text = p.caloriesBurned.toStringAsFixed(0);
+      if (p.distance > 0) _distanceCtrl.text = p.distance.toStringAsFixed(1);
+      if (p.intensity.isNotEmpty) _intensity = p.intensity;
+      _notesCtrl.text = p.notes;
+      _exercisedAt = p.exercisedAt;
+    }
+  }
 
   @override
   void dispose() {
@@ -411,20 +486,35 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
 
     setState(() => _submitting = true);
     try {
-      await widget.exerciseService.createRecord(
-        userId: widget.userId,
-        type: type,
-        durationMin: dur,
-        intensity: _intensity,
-        caloriesBurned: double.tryParse(_caloriesCtrl.text.trim()) ?? 0,
-        distance: double.tryParse(_distanceCtrl.text.trim()) ?? 0,
-        notes: _notesCtrl.text.trim(),
-        exercisedAt: _exercisedAt,
-      );
+      final cal = double.tryParse(_caloriesCtrl.text.trim()) ?? 0;
+      final dist = double.tryParse(_distanceCtrl.text.trim()) ?? 0;
+      if (widget.prefill != null) {
+        await widget.exerciseService.updateRecord(
+          widget.prefill!.id,
+          type: type,
+          durationMin: dur,
+          intensity: _intensity,
+          caloriesBurned: cal,
+          distance: dist,
+          notes: _notesCtrl.text.trim(),
+          exercisedAt: _exercisedAt,
+        );
+      } else {
+        await widget.exerciseService.createRecord(
+          userId: widget.userId,
+          type: type,
+          durationMin: dur,
+          intensity: _intensity,
+          caloriesBurned: cal,
+          distance: dist,
+          notes: _notesCtrl.text.trim(),
+          exercisedAt: _exercisedAt,
+        );
+      }
       if (mounted) {
         Navigator.pop(context, true);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('运动记录已保存')),
+          SnackBar(content: Text(widget.prefill == null ? '运动记录已保存' : '已更新')),
         );
       }
     } catch (e) {
@@ -511,8 +601,8 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
 
     return [
       Row(children: [
-        const Text('添加运动记录',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+        Text(widget.prefill == null ? '添加运动记录' : '编辑运动记录',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
         const Spacer(),
         IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
       ]),
