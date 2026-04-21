@@ -48,6 +48,9 @@ dependencies:
   # Camera
   camera: ^0.10.5
 
+  # Voice input（语音转文字，iOS/Android/Web 三端通吃，web 走浏览器 SpeechRecognition）
+  speech_to_text: ^6.6.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -6,6 +6,7 @@ import '../providers/user_provider.dart';
 import '../services/weight_service.dart';
 import '../services/ai_service.dart';
 import '../models/weight_record.dart';
+import '../widgets/voice_input_button.dart';
 
 class WeightScreen extends StatefulWidget {
   final bool showAppBar;
@@ -734,6 +735,10 @@ class _AddWeightSheetState extends State<_AddWeightSheet> {
               ? const SizedBox(width: 16, height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2))
               : const Text('解析'),
+        ),
+        VoiceInputButton(
+          targetController: _descCtrl,
+          onFinalized: _aiParse,
         ),
       ]),
 

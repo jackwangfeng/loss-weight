@@ -7,6 +7,7 @@ import '../providers/user_provider.dart';
 import '../services/food_service.dart';
 import '../services/ai_service.dart';
 import '../models/food_record.dart';
+import '../widgets/voice_input_button.dart';
 
 class FoodScreen extends StatefulWidget {
   /// 嵌入到 RecordsScreen 的 TabBar 里时，传 false 避免双 AppBar
@@ -683,6 +684,10 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
                 ? const SizedBox(width: 16, height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : const Text('估算'),
+          ),
+          VoiceInputButton(
+            targetController: _descCtrl,
+            onFinalized: _estimateFromText,
           ),
           IconButton(
             icon: const Icon(Icons.camera_alt),

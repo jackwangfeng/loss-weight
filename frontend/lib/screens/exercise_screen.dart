@@ -5,6 +5,7 @@ import '../providers/user_provider.dart';
 import '../services/exercise_service.dart';
 import '../services/ai_service.dart';
 import '../models/exercise_record.dart';
+import '../widgets/voice_input_button.dart';
 
 class ExerciseScreen extends StatefulWidget {
   final bool showAppBar;
@@ -542,6 +543,10 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
               ? const SizedBox(width: 16, height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2))
               : const Text('估算'),
+        ),
+        VoiceInputButton(
+          targetController: _descCtrl,
+          onFinalized: _estimate,
         ),
       ]),
 
