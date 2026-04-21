@@ -72,7 +72,38 @@ test.describe('Semantics 交互测试', () => {
     // 选中态变化 + AI 界面特有按钮出现
     await expect(page.locator('flt-semantics[role="tab"][aria-selected="true"]'))
       .toHaveAttribute('aria-label', /AI/, { timeout: 5000 });
-    await expect(page.getByText('新建对话')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('新建对话').first()).toBeVisible({ timeout: 5000 });
+  });
+
+  test('点击 饮食 tab 应该显示饮食记录界面', async ({ page }) => {
+    await waitForTabs(page);
+    await page.getByRole('tab', { name: '饮食', exact: true }).click();
+    await expect(page.getByText('饮食记录').first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('暂无饮食记录').first()).toBeVisible();
+    await expect(page.getByText('添加记录').first()).toBeVisible();
+  });
+
+  test('点击 体重 tab 应该显示体重记录界面', async ({ page }) => {
+    await waitForTabs(page);
+    await page.getByRole('tab', { name: '体重', exact: true }).click();
+    await expect(page.getByText('体重记录').first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('暂无体重记录').first()).toBeVisible();
+  });
+
+  test('点击 我的 tab 应该显示未登录状态', async ({ page }) => {
+    await waitForTabs(page);
+    await page.getByRole('tab', { name: '我的', exact: true }).click();
+    await expect(page.getByText('未登录').first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('登录/注册').first()).toBeVisible();
+  });
+
+  test('依次切换所有 tab 不崩溃', async ({ page }) => {
+    await waitForTabs(page);
+    for (const name of ['饮食', '体重', 'AI', '我的', '首页']) {
+      await page.getByRole('tab', { name, exact: true }).click();
+      // 每次切完后 flutter-view 仍然可见（没白屏/崩溃）
+      await expect(page.locator('flutter-view')).toBeVisible();
+    }
   });
 });
 
