@@ -5,7 +5,7 @@ import 'package:loss_weight/providers/locale_provider.dart';
 
 void main() {
   testWidgets('App builds', (WidgetTester tester) async {
-    await tester.pumpWidget(CutBroApp(localeProvider: LocaleProvider()));
+    await tester.pumpWidget(RecompDailyApp(localeProvider: LocaleProvider()));
     await tester.pump();
   });
 }

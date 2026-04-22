@@ -9,10 +9,10 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
-  String get appTitle => 'CutBro';
+  String get appTitle => 'RecompDaily';
 
   @override
-  String get appTagline => '面向健身男性的 AI 切脂教练';
+  String get appTagline => '你的每日身体重塑教练';
 
   @override
   String get navToday => '今日';

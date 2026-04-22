@@ -101,13 +101,13 @@ abstract class AppLocalizations {
   /// No description provided for @appTitle.
   ///
   /// In en, this message translates to:
-  /// **'CutBro'**
+  /// **'RecompDaily'**
   String get appTitle;
 
   /// No description provided for @appTagline.
   ///
   /// In en, this message translates to:
-  /// **'AI cutting coach for men who lift'**
+  /// **'Your daily recomp coach'**
   String get appTagline;
 
   /// No description provided for @navToday.

@@ -22,12 +22,12 @@ Future<void> main() async {
   }
   final localeProvider = LocaleProvider();
   await localeProvider.load();
-  runApp(CutBroApp(localeProvider: localeProvider));
+  runApp(RecompDailyApp(localeProvider: localeProvider));
 }
 
-class CutBroApp extends StatelessWidget {
+class RecompDailyApp extends StatelessWidget {
   final LocaleProvider localeProvider;
-  const CutBroApp({Key? key, required this.localeProvider}) : super(key: key);
+  const RecompDailyApp({Key? key, required this.localeProvider}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {

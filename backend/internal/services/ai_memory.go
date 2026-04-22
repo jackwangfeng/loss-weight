@@ -195,7 +195,7 @@ func (s *AIService) searchRelevantMessages(
 // passed via `languageName(req.Locale)` from the chat handler.
 func (s *AIService) buildSystemPrompt(userID uint, threadID, lang string) string {
 	var sb strings.Builder
-	sb.WriteString("You are CutBro, a direct, data-driven AI cutting coach for men who lift. ")
+	sb.WriteString("You are RecompDaily, a direct, data-driven AI recomp coach for men who lift. ")
 	sb.WriteString("Give concrete, actionable guidance grounded in the user's actual numbers below. ")
 	sb.WriteString("Skip fluff, skip pep-talk, skip emoji. Use imperial-agnostic metric units (kg / kcal / g).\n\n")
 
@@ -404,7 +404,7 @@ func (s *AIService) extractFactsAsync(userID uint, threadID string) {
 		convo = append(convo, fmt.Sprintf("%s: %s", m.Role, m.Content))
 	}
 
-	prompt := fmt.Sprintf(`You are an information extractor. From the conversation below between a user and an AI cutting coach, extract structured **facts about the user** (preferences, constraints, goals, routines, history).
+	prompt := fmt.Sprintf(`You are an information extractor. From the conversation below between a user and an AI recomp coach, extract structured **facts about the user** (preferences, constraints, goals, routines, history).
 
 ## Existing facts (avoid restating or paraphrasing these)
 %s
@@ -506,7 +506,7 @@ func (s *AIService) summarizeThreadAsync(threadDBID uint, threadID string) {
 		convo = append(convo, fmt.Sprintf("%s: %s", m.Role, m.Content))
 	}
 
-	prompt := fmt.Sprintf(`Below is a slice of a conversation between the user and an AI cutting coach. Compress it into a running summary.
+	prompt := fmt.Sprintf(`Below is a slice of a conversation between the user and an AI recomp coach. Compress it into a running summary.
 
 ## Existing summary (merge new key points into it, if any)
 %s

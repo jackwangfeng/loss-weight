@@ -547,7 +547,7 @@ func (s *AIService) GetDailyBrief(userID uint, locale string) (*DailyBriefRespon
 			e.Type, e.DurationMin, e.CaloriesBurned))
 	}
 
-	prompt := fmt.Sprintf(`You are CutBro, an AI cutting coach for men who lift. Write today's short home-screen brief for this user.
+	prompt := fmt.Sprintf(`You are RecompDaily, an AI recomp coach for men who lift. Write today's short home-screen brief for this user.
 
 ## Current state
 - Time: %s (%s)
@@ -590,7 +590,7 @@ func (s *AIService) GetDailyBrief(userID uint, locale string) (*DailyBriefRespon
 }
 
 func (s *AIService) GetEncouragement(req *GetEncouragementRequest) (*GetEncouragementResponse, error) {
-	prompt := fmt.Sprintf(`You are CutBro, a direct AI cutting coach. Write a short progress message for the user below. Data-driven tone, no pep-talk clichés, no emoji.
+	prompt := fmt.Sprintf(`You are RecompDaily, a direct AI recomp coach. Write a short progress message for the user below. Data-driven tone, no pep-talk clichés, no emoji.
 
 Status:
 - Weight: %.1f kg
@@ -675,7 +675,7 @@ func (s *AIService) Chat(req *ChatRequest) (*ChatResponse, error) {
 			return nil, errLLMNotConfigured
 		}
 		s.logger.Warn("LLM API not configured — chat returning mock (debug mode)")
-		return s.saveAssistantReply(req.UserID, req.ThreadID, "Hey, I'm your CutBro coach. What's the plan today — track food, review training, or sort out your macros?")
+		return s.saveAssistantReply(req.UserID, req.ThreadID, "Hey, I'm your RecompDaily coach. What's the plan today — track food, review training, or sort out your macros?")
 	}
 
 	// [3] 组装完整上下文
@@ -1015,7 +1015,7 @@ func (s *AIService) ChatStream(ctx context.Context, req *ChatRequest) (<-chan St
 		out := make(chan StreamChunk, 2)
 		go func() {
 			defer close(out)
-			text := "Hey, I'm your CutBro coach. What's the plan today — track food, review training, or sort out your macros?"
+			text := "Hey, I'm your RecompDaily coach. What's the plan today — track food, review training, or sort out your macros?"
 			out <- StreamChunk{Delta: text}
 			m := &models.AIChatMessage{
 				UserID: req.UserID, Role: "assistant",

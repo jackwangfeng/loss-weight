@@ -9,10 +9,10 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
-  String get appTitle => 'CutBro';
+  String get appTitle => 'RecompDaily';
 
   @override
-  String get appTagline => 'AI cutting coach for men who lift';
+  String get appTagline => 'Your daily recomp coach';
 
   @override
   String get navToday => 'Today';
