@@ -1,9 +1,9 @@
 version: '3.8'
 
 services:
-  # PostgreSQL Database
+  # PostgreSQL Database (with pgvector extension for AI embedding search)
   db:
-    image: postgres:15
+    image: pgvector/pgvector:pg15
     container_name: loss_weight_db
     environment:
       POSTGRES_USER: postgres

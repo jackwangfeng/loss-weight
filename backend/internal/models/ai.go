@@ -3,6 +3,7 @@ package models
 import (
 	"time"
 
+	"github.com/pgvector/pgvector-go"
 	"gorm.io/gorm"
 )
 
@@ -14,12 +15,12 @@ type AIChatMessage struct {
 	Tokens    int            `gorm:"type:int" json:"tokens"`
 	ParentID  *uint          `gorm:"index" json:"parent_id"`
 	ThreadID  string         `gorm:"size:64;index" json:"thread_id"`
-	// Embedding: 768-dim float32 向量的小端二进制形式（3072 字节）。
-	// 异步写入，后端 RAG 检索用；前端不需要看，json tag "-"。
-	// 不写死 type：SQLite 默认 blob、Postgres 默认 bytea，让 GORM 按方言选。
-	Embedding []byte         `json:"-"`
-	CreatedAt time.Time      `json:"created_at"`
-	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+	// Embedding: gemini-embedding-001 的 3072 维向量，fp16 存储。
+	// 异步写入，后端 RAG 检索用 SQL 侧 cosine；前端不需要看，json tag "-"。
+	// Postgres 专用：pgvector 的 halfvec + HNSW 索引（≤4000 维）。
+	Embedding *pgvector.HalfVector `gorm:"type:halfvec(3072)" json:"-"`
+	CreatedAt time.Time            `json:"created_at"`
+	DeletedAt gorm.DeletedAt       `gorm:"index" json:"-"`
 }
 
 func (AIChatMessage) TableName() string {

@@ -10,8 +10,8 @@
 #   5. 退出时自动停掉静态服务器
 #
 # 用法：
-#   ./run_e2e_tests.sh                  默认：构建 + 服务 + 跑全套
-#   ./run_e2e_tests.sh --skip-build     跳过 flutter build（build/web 已存在时）
+#   ./run_e2e_tests.sh                  默认：跳过 build，复用 build/web/
+#   ./run_e2e_tests.sh --build          强制重新 flutter build web --release
 #   ./run_e2e_tests.sh --headed         开可视浏览器
 #   ./run_e2e_tests.sh --report         跑完打开 HTML 报告
 #   ./run_e2e_tests.sh --install        安装 Playwright 依赖和 Chromium
@@ -92,7 +92,7 @@ ensure_static_server() {
     fi
 
     if [ ! -f build/web/index.html ]; then
-        echo -e "${RED}✗ 找不到 build/web/index.html，请先 build（去掉 --skip-build）${NC}"
+        echo -e "${RED}✗ 找不到 build/web/index.html，请先 build（加上 --build）${NC}"
         exit 1
     fi
     echo -e "${YELLOW}🚀 起静态服务器 node tests/static_server.js (port ${FRONTEND_PORT})...${NC}"
@@ -113,13 +113,16 @@ ensure_static_server() {
 }
 
 # --- parse args ---
-SKIP_BUILD=false
+# 默认跳过 build —— flutter build web --release ~20s 太慢，日常迭代没必要每次重建。
+# 真有 dart 侧改动时用 --build 强制重建。--skip-build 保留做 no-op 兼容。
+SKIP_BUILD=true
 HEADED=false
 SHOW_REPORT=false
 EXTRA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
     case $1 in
+        --build)      SKIP_BUILD=false; shift ;;
         --skip-build) SKIP_BUILD=true; shift ;;
         --headed)     HEADED=true; shift ;;
         --report)     SHOW_REPORT=true; shift ;;

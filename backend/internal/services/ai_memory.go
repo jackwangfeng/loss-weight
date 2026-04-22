@@ -16,19 +16,19 @@ package services
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/pgvector/pgvector-go"
 	"github.com/your-org/loss-weight/backend/internal/models"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 // ---- 触发阈值（可调） --------------------------------------------------------
@@ -42,10 +42,10 @@ const (
 	summarizeThreshold = 20
 	// 事实抽取节流：每累积此数量新消息触发一次
 	factExtractEvery = 6
-	// Embedding 维度（text-embedding-004 是 768）
-	embedDim = 768
+	// Embedding 维度（gemini-embedding-001 默认 3072）
+	embedDim = 3072
 	// 默认 embedding 端点
-	defaultEmbedURL = "https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent"
+	defaultEmbedURL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent"
 )
 
 // ---- Embedding --------------------------------------------------------------
@@ -67,7 +67,7 @@ type embedResponse struct {
 	} `json:"embedding"`
 }
 
-// generateEmbedding 调 Gemini text-embedding-004 生成 768 维向量。
+// generateEmbedding 调 Gemini gemini-embedding-001 生成 3072 维向量。
 // taskType 可选 "RETRIEVAL_QUERY" / "RETRIEVAL_DOCUMENT"，不传就是 null（通用）。
 func (s *AIService) generateEmbedding(ctx context.Context, text, taskType string) ([]float32, error) {
 	if s.llmAPIKey == "" {
@@ -78,7 +78,7 @@ func (s *AIService) generateEmbedding(ctx context.Context, text, taskType string
 	}
 
 	payload := embedRequest{
-		Model:    "models/text-embedding-004",
+		Model:    "models/gemini-embedding-001",
 		Content:  embedContent{Parts: []embedPart{{Text: text}}},
 		TaskType: taskType,
 	}
@@ -114,43 +114,6 @@ func (s *AIService) generateEmbedding(ctx context.Context, text, taskType string
 	return out.Embedding.Values, nil
 }
 
-// encodeEmbedding / decodeEmbedding：float32 slice ↔ 小端 byte slice
-func encodeEmbedding(v []float32) []byte {
-	out := make([]byte, 4*len(v))
-	for i, x := range v {
-		binary.LittleEndian.PutUint32(out[i*4:], math.Float32bits(x))
-	}
-	return out
-}
-func decodeEmbedding(buf []byte) []float32 {
-	if len(buf) == 0 || len(buf)%4 != 0 {
-		return nil
-	}
-	n := len(buf) / 4
-	out := make([]float32, n)
-	for i := 0; i < n; i++ {
-		out[i] = math.Float32frombits(binary.LittleEndian.Uint32(buf[i*4:]))
-	}
-	return out
-}
-
-func cosineSimilarity(a, b []float32) float32 {
-	if len(a) == 0 || len(a) != len(b) {
-		return 0
-	}
-	var dot, na, nb float32
-	for i := range a {
-		dot += a[i] * b[i]
-		na += a[i] * a[i]
-		nb += b[i] * b[i]
-	}
-	denom := float32(math.Sqrt(float64(na))) * float32(math.Sqrt(float64(nb)))
-	if denom == 0 {
-		return 0
-	}
-	return dot / denom
-}
-
 // embedMessageAsync 后台给 message.Embedding 填充向量。失败只打日志不阻断。
 func (s *AIService) embedMessageAsync(msgID uint, text string) {
 	go func() {
@@ -166,8 +129,9 @@ func (s *AIService) embedMessageAsync(msgID uint, text string) {
 			s.logger.Warn("embed message failed", zap.Uint("msg_id", msgID), zap.Error(err))
 			return
 		}
+		hv := pgvector.NewHalfVector(vec)
 		if err := s.db.Model(&models.AIChatMessage{}).Where("id = ?", msgID).
-			Update("embedding", encodeEmbedding(vec)).Error; err != nil {
+			Update("embedding", hv).Error; err != nil {
 			s.logger.Error("save embedding failed", zap.Uint("msg_id", msgID), zap.Error(err))
 		}
 	}()
@@ -180,8 +144,9 @@ type relevantMessage struct {
 	Similarity float32
 }
 
-// searchRelevantMessages: 对 queryText 做 embedding，在该用户的所有历史消息里按 cosine
-// 相似度取 top-K。excludeMsgIDs 用来剔除已经出现在滑窗里的消息，避免重复注入。
+// searchRelevantMessages: 对 queryText 做 embedding，在该用户所有历史消息里按 cosine
+// 相似度取 top-K。在 Postgres 侧用 pgvector 的 `<=>` 算子，HNSW 索引做 ANN。
+// excludeMsgIDs 用来剔除已经出现在滑窗里的消息，避免重复注入。
 func (s *AIService) searchRelevantMessages(
 	ctx context.Context, userID uint, queryText string,
 	excludeMsgIDs []uint, topK int,
@@ -193,33 +158,32 @@ func (s *AIService) searchRelevantMessages(
 	if err != nil {
 		return nil, err
 	}
+	qv := pgvector.NewHalfVector(queryVec)
 
-	var msgs []models.AIChatMessage
-	q := s.db.Where("user_id = ? AND embedding IS NOT NULL AND length(embedding) > 0", userID)
+	// cosine distance ∈ [0,2]，similarity = 1 - distance；阈值 0.5 相似度 ⇒ distance ≤ 0.5
+	const maxDistance = 0.5
+
+	type row struct {
+		models.AIChatMessage
+		Distance float32
+	}
+	var rows []row
+
+	q := s.db.WithContext(ctx).
+		Model(&models.AIChatMessage{}).
+		Select("ai_chat_messages.*, (embedding <=> ?) AS distance", qv).
+		Where("user_id = ? AND embedding IS NOT NULL", userID).
+		Where("(embedding <=> ?) <= ?", qv, maxDistance)
 	if len(excludeMsgIDs) > 0 {
 		q = q.Where("id NOT IN ?", excludeMsgIDs)
 	}
-	// 限量，避免用户历史消息特别多时内存爆炸
-	if err := q.Order("id DESC").Limit(500).Find(&msgs).Error; err != nil {
+	if err := q.Order(gorm.Expr("embedding <=> ?", qv)).Limit(topK).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 
-	hits := make([]relevantMessage, 0, len(msgs))
-	for _, m := range msgs {
-		v := decodeEmbedding(m.Embedding)
-		if len(v) != embedDim {
-			continue
-		}
-		sim := cosineSimilarity(queryVec, v)
-		// 过滤掉相似度极低的
-		if sim < 0.5 {
-			continue
-		}
-		hits = append(hits, relevantMessage{Msg: m, Similarity: sim})
-	}
-	sort.Slice(hits, func(i, j int) bool { return hits[i].Similarity > hits[j].Similarity })
-	if len(hits) > topK {
-		hits = hits[:topK]
+	hits := make([]relevantMessage, 0, len(rows))
+	for _, r := range rows {
+		hits = append(hits, relevantMessage{Msg: r.AIChatMessage, Similarity: 1 - r.Distance})
 	}
 	return hits, nil
 }
