@@ -119,6 +119,7 @@ frontend/test_tabs.js
 
 # macOS
 .DS_Store
+._*
 
 # IntelliJ
 *.iml

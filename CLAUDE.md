@@ -15,8 +15,9 @@ STRATEGY_PIVOT.txt (strategy) and the code itself (how).
 - **Pricing target**: $9.99/mo or $59/yr. Day-1 paywall eventually — AI features
   pay-gated, manual logging free.
 
-Full market/pivot rationale: see `STRATEGY_PIVOT.txt` at repo root (untracked,
-working doc — don't modify unless asked).
+Full market/pivot rationale: see `STRATEGY_PIVOT.txt` at repo root — working
+doc, don't modify unless asked.
+iOS submission plan: `APPSTORE_CHECKLIST.md`.
 
 ---
 
@@ -168,8 +169,8 @@ silently.
   ~$0.03 / photo and a heavy free user can cost $1+/day.
 - Don't reintroduce a light theme, emoji in prompts, pep-talk tone, or
   imperial units.
-- Don't touch `STRATEGY_PIVOT.txt` — it's the human's working doc, kept
-  untracked on purpose.
+- Don't modify `STRATEGY_PIVOT.txt` — it's the human's working doc,
+  updated only when they ask.
 - Don't `flutter build web` just to test syntax — use `flutter analyze`,
   it's 100x faster.
 

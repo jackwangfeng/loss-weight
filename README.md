@@ -31,8 +31,8 @@ flutter run -d web-server --web-port 8888
 ## Docs
 
 - `CLAUDE.md` — project conventions, contracts, pitfalls. Read before editing.
-- `STRATEGY_PIVOT.txt` — business / positioning working doc (untracked, lives
-  at repo root).
+- `STRATEGY_PIVOT.txt` — business / positioning working doc.
+- `APPSTORE_CHECKLIST.md` — iOS submission working checklist.
 
 ## Tests
 
