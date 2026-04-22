@@ -97,24 +97,34 @@ ThemeData _buildTheme() {
   );
 
   // Tightened, numeric-friendly typography.
-  final tt = base.textTheme.apply(
-    bodyColor: _onSurface,
-    displayColor: _onSurface,
-  ).copyWith(
-    displayLarge:  const TextStyle(fontWeight: FontWeight.w700, letterSpacing: -1.0, height: 1.1),
-    displayMedium: const TextStyle(fontWeight: FontWeight.w700, letterSpacing: -0.5, height: 1.15),
-    headlineLarge: const TextStyle(fontWeight: FontWeight.w600, letterSpacing: -0.3),
-    headlineMedium:const TextStyle(fontWeight: FontWeight.w600, letterSpacing: -0.2),
-    titleLarge:    const TextStyle(fontWeight: FontWeight.w600, letterSpacing: -0.1),
-    titleMedium:   const TextStyle(fontWeight: FontWeight.w600),
-    bodyLarge:     const TextStyle(fontSize: 15, height: 1.45),
-    bodyMedium:    const TextStyle(fontSize: 14, height: 1.45),
-    labelLarge:    const TextStyle(fontWeight: FontWeight.w600, letterSpacing: 0.2),
-    labelSmall:    const TextStyle(fontSize: 11, letterSpacing: 0.4, color: _muted),
+  // NOTE: each TextStyle sets `color: _onSurface` explicitly — if you only
+  // call `.apply(bodyColor: ...)` and then `.copyWith(bodyLarge: TextStyle(...))`,
+  // the copyWith REPLACES the style whole and the color from apply is lost,
+  // which leaks black-on-black into TextField input text on dark theme.
+  final tt = base.textTheme.copyWith(
+    displayLarge:  const TextStyle(color: _onSurface, fontWeight: FontWeight.w700, letterSpacing: -1.0, height: 1.1),
+    displayMedium: const TextStyle(color: _onSurface, fontWeight: FontWeight.w700, letterSpacing: -0.5, height: 1.15),
+    headlineLarge: const TextStyle(color: _onSurface, fontWeight: FontWeight.w600, letterSpacing: -0.3),
+    headlineMedium:const TextStyle(color: _onSurface, fontWeight: FontWeight.w600, letterSpacing: -0.2),
+    titleLarge:    const TextStyle(color: _onSurface, fontWeight: FontWeight.w600, letterSpacing: -0.1),
+    titleMedium:   const TextStyle(color: _onSurface, fontWeight: FontWeight.w600),
+    titleSmall:    const TextStyle(color: _onSurface, fontWeight: FontWeight.w600),
+    bodyLarge:     const TextStyle(color: _onSurface, fontSize: 15, height: 1.45),
+    bodyMedium:    const TextStyle(color: _onSurface, fontSize: 14, height: 1.45),
+    bodySmall:     const TextStyle(color: _muted, fontSize: 12, height: 1.4),
+    labelLarge:    const TextStyle(color: _onSurface, fontWeight: FontWeight.w600, letterSpacing: 0.2),
+    labelMedium:   const TextStyle(color: _onSurface, fontWeight: FontWeight.w600, letterSpacing: 0.2),
+    labelSmall:    const TextStyle(color: _muted, fontSize: 11, letterSpacing: 0.4),
   );
 
   return base.copyWith(
     textTheme: tt,
+    primaryTextTheme: tt,
+    textSelectionTheme: const TextSelectionThemeData(
+      cursorColor: _accent,
+      selectionColor: Color(0x40E53935),
+      selectionHandleColor: _accent,
+    ),
     appBarTheme: const AppBarTheme(
       backgroundColor: _bg,
       surfaceTintColor: Colors.transparent,
