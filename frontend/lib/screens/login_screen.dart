@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/user_provider.dart';
+import '../widgets/google_sign_in_button.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -12,17 +14,52 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _phoneController = TextEditingController();
-  final _codeController = TextEditingController();
+  AuthProvider? _authProvider;
+  VoidCallback? _authListener;
 
-  bool _isCodeSent = false;
-  int _countdown = 60;
+  @override
+  void initState() {
+    super.initState();
+    // Kick Google init on the next frame so GIS is wired up by the time the
+    // rendered button attempts to draw. Also hook a listener so we auto-pop
+    // this screen when the Google stream drives us into a signed-in state.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      _authProvider = auth;
+      auth.ensureGoogleInitialized();
+
+      _authListener = () async {
+        if (!mounted) return;
+        if (auth.isLoggedIn) {
+          if (auth.userId != null) {
+            final userProvider =
+                Provider.of<UserProvider>(context, listen: false);
+            await userProvider.loadUser(auth.userId!);
+          }
+          if (!mounted) return;
+          Navigator.of(context).pop(true);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(AppLocalizations.of(context).toastSignedIn)),
+          );
+        } else if (auth.error != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(AppLocalizations.of(context)
+                  .errorGoogleSignInFailed(auth.error!)),
+            ),
+          );
+        }
+      };
+      auth.addListener(_authListener!);
+    });
+  }
 
   @override
   void dispose() {
-    _phoneController.dispose();
-    _codeController.dispose();
+    if (_authListener != null && _authProvider != null) {
+      _authProvider!.removeListener(_authListener!);
+    }
     super.dispose();
   }
 
@@ -36,11 +73,11 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 48),
+              const Spacer(flex: 2),
               Icon(
                 Icons.fitness_center,
                 size: 72,
@@ -65,90 +102,24 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 48),
+              const Spacer(flex: 3),
 
-              Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    TextFormField(
-                      controller: _phoneController,
-                      keyboardType: TextInputType.phone,
-                      decoration: InputDecoration(
-                        labelText: l10n.authPhoneLabel,
-                        hintText: l10n.authPhoneHint,
-                        prefixIcon: const Icon(Icons.phone),
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return l10n.authPhoneRequired;
-                        }
-                        if (!RegExp(r'^1[3-9]\d{9}$').hasMatch(value)) {
-                          return l10n.authPhoneInvalid;
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: _codeController,
-                            keyboardType: TextInputType.number,
-                            decoration: InputDecoration(
-                              labelText: l10n.authCodeLabel,
-                              hintText: l10n.authCodeHint,
-                              prefixIcon: const Icon(Icons.shield),
-                            ),
-                            maxLength: 6,
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return l10n.authCodeRequired;
-                              }
-                              if (value.length != 6) {
-                                return l10n.authCodeWrongLength;
-                              }
-                              return null;
-                            },
-                          ),
+              // Only Google on海外版. Backend still supports SMS for tests,
+              // but the UI is single-path to keep the first screen clean.
+              Center(
+                child: kIsWeb
+                    ? buildGoogleSignInButton()
+                    : OutlinedButton.icon(
+                        onPressed: _googleLogin,
+                        icon: const Icon(Icons.account_circle, size: 20),
+                        label: Text(l10n.authContinueWithGoogle),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
-                        const SizedBox(width: 12),
-                        ElevatedButton(
-                          onPressed: _isCodeSent ? null : _sendCode,
-                          style: ElevatedButton.styleFrom(
-                            minimumSize: const Size(130, 56),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          child: Text(
-                            _isCodeSent
-                                ? l10n.actionResendCode(_countdown)
-                                : l10n.actionSendCode,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 32),
-
-                    FilledButton(
-                      onPressed: _login,
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
-                      child: Text(
-                        l10n.actionSignIn,
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                    ),
-                  ],
-                ),
               ),
 
-              const Spacer(),
+              const Spacer(flex: 2),
 
               Text(
                 l10n.authTerms,
@@ -158,7 +129,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 8),
             ],
           ),
         ),
@@ -166,88 +137,19 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Future<void> _sendCode() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    final phone = _phoneController.text;
+  /// Mobile-only: triggers the imperative GIS flow. On web the GIS button
+  /// widget drives everything via `authenticationEvents`, so this isn't used.
+  Future<void> _googleLogin() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final l10n = AppLocalizations.of(context);
-
     try {
-      await authProvider.sendSMSCode(phone);
-
-      if (mounted) {
-        setState(() {
-          _isCodeSent = true;
-          _countdown = 60;
-        });
-
-        Future.delayed(const Duration(seconds: 1), () {
-          if (mounted) {
-            setState(() {
-              _countdown--;
-            });
-          }
-        });
-
-        for (int i = 59; i > 0; i--) {
-          await Future.delayed(const Duration(seconds: 1));
-          if (mounted) {
-            setState(() {
-              _countdown = i;
-            });
-          }
-        }
-
-        if (mounted) {
-          setState(() {
-            _isCodeSent = false;
-          });
-        }
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(l10n.toastCodeSent)),
-          );
-        }
-      }
+      await authProvider.googleSignInInteractive();
+      // Success path runs via the authenticationEvents listener in AuthProvider,
+      // which flips isLoggedIn and wakes our addListener(). Nothing more to do.
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.errorSendFailed(e.toString()))),
-        );
-      }
-    }
-  }
-
-  Future<void> _login() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    final phone = _phoneController.text;
-    final code = _codeController.text;
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final l10n = AppLocalizations.of(context);
-
-    try {
-      await authProvider.phoneLogin(phone, code);
-
-      if (mounted) {
-        if (authProvider.userId != null) {
-          final userProvider = Provider.of<UserProvider>(context, listen: false);
-          await userProvider.loadUser(authProvider.userId!);
-        }
-
-        if (mounted) {
-          Navigator.of(context).pop(true);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(l10n.toastSignedIn)),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.errorSignInFailed(e.toString()))),
+          SnackBar(content: Text(l10n.errorGoogleSignInFailed(e.toString()))),
         );
       }
     }

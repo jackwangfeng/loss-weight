@@ -31,6 +31,13 @@
 
   <title>loss_weight</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- Google Identity Services — required by google_sign_in_web ≥ 0.12.x.
+       Meta tag supplies the OAuth Web Client ID; the GIS script enables the
+       token request flow. Both must be present or GoogleSignIn.signIn()
+       throws MissingPluginException on web. -->
+  <meta name="google-signin-client_id" content="604310975641-chq87tal9oii607rigc1uq59vjsirgas.apps.googleusercontent.com">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>

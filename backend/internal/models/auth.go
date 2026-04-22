@@ -21,10 +21,16 @@ func (SMSCode) TableName() string {
 	return "sms_codes"
 }
 
+// UserAccount — one identity per row. Supports both SMS (Phone) and Google
+// (Email + GoogleSub) sign-in. All three identifier columns are nullable so
+// a row can be created via either path; unique indexes ignore NULL in Postgres,
+// so multiple "Google-only" or "SMS-only" accounts coexist without collision.
 type UserAccount struct {
 	ID             uint           `gorm:"primaryKey" json:"id"`
-	Phone          string         `gorm:"size:11;uniqueIndex;not null" json:"phone"`
-	Password       string         `gorm:"size:255" json:"-"` // 预留密码登录
+	Phone          *string        `gorm:"size:16;uniqueIndex" json:"phone,omitempty"`
+	Email          *string        `gorm:"size:255;uniqueIndex" json:"email,omitempty"`
+	GoogleSub      *string        `gorm:"size:64;uniqueIndex" json:"google_sub,omitempty"` // Google's stable user id
+	Password       string         `gorm:"size:255" json:"-"`                                // reserved for password login
 	UserProfileID  *uint          `gorm:"index" json:"user_profile_id"`
 	UserProfile    *UserProfile   `gorm:"foreignKey:UserProfileID" json:"user_profile,omitempty"`
 	LastLoginAt    *time.Time     `json:"last_login_at"`

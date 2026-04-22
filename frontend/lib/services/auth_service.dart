@@ -24,12 +24,27 @@ class AuthService {
       'phone': phone,
       'code': code,
     });
-    
+
     // 保存 token
     if (response.data['token'] != null) {
       _apiService.token = response.data['token'] as String;
     }
-    
+
+    return response.data;
+  }
+
+  /// Google 登录：前端用 GIS 拿 ID token，后端用 Google 公钥验证后换成我们自己的 token。
+  Future<Map<String, dynamic>> googleLogin({
+    required String idToken,
+  }) async {
+    final response = await _apiService.post('/auth/google', {
+      'id_token': idToken,
+    });
+
+    if (response.data['token'] != null) {
+      _apiService.token = response.data['token'] as String;
+    }
+
     return response.data;
   }
 

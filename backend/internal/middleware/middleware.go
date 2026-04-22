@@ -2,11 +2,11 @@ package middleware
 
 import (
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/your-org/loss-weight/backend/internal/auth"
 	"go.uber.org/zap"
 )
 
@@ -51,28 +51,23 @@ func Logger(logger *zap.Logger) gin.HandlerFunc {
 	}
 }
 
-// AuthRequired 解析 Authorization: Bearer <token>，把 user_id 塞进 gin.Context。
-// token 格式来自 auth_service.PhoneLogin："token_<userID>_<yyyymmddHHMMSS>"。
-// 后续要换成 JWT 时，只改这里即可。
-func AuthRequired() gin.HandlerFunc {
+// AuthRequired parses `Authorization: Bearer <jwt>`, verifies the token
+// against the shared HS256 secret, and attaches `user_id` to the gin context.
+// Requires a TokenIssuer built at boot from config.SecretKey.
+func AuthRequired(tokens *auth.TokenIssuer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		h := c.GetHeader("Authorization")
 		if !strings.HasPrefix(h, "Bearer ") {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "未登录"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
 			return
 		}
 		token := strings.TrimPrefix(h, "Bearer ")
-		parts := strings.SplitN(token, "_", 3)
-		if len(parts) < 3 || parts[0] != "token" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token 格式错误"})
-			return
-		}
-		id, err := strconv.ParseUint(parts[1], 10, 32)
+		uid, err := tokens.Verify(token)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token 格式错误"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
 			return
 		}
-		c.Set("user_id", uint(id))
+		c.Set("user_id", uid)
 		c.Next()
 	}
 }

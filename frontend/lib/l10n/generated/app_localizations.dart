@@ -412,6 +412,24 @@ abstract class AppLocalizations {
   /// **'By signing in you agree to the Terms & Privacy Policy.'**
   String get authTerms;
 
+  /// No description provided for @authContinueWithGoogle.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue with Google'**
+  String get authContinueWithGoogle;
+
+  /// No description provided for @authOrDivider.
+  ///
+  /// In en, this message translates to:
+  /// **'or'**
+  String get authOrDivider;
+
+  /// No description provided for @errorGoogleSignInFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Google sign-in failed: {error}'**
+  String errorGoogleSignInFailed(String error);
+
   /// No description provided for @profileTitle.
   ///
   /// In en, this message translates to:

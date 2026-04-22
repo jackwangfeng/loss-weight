@@ -59,6 +59,10 @@ dependencies:
   # Web 端流式 HTTP（Dio 在 Web 上会 buffer 整个响应，用 fetch_client 绕过）
   fetch_client: ^1.1.2
 
+  # Google Sign-In — 海外版主登录方式。v7 用 GIS credential flow，
+  # web 也能拿到 id_token（v6 web 只给 access_token 不给 id_token）。
+  google_sign_in: ^7.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -84,6 +84,33 @@ func (h *AuthHandler) PhoneLogin(c *gin.Context) {
 	})
 }
 
+// Google 登录
+func (h *AuthHandler) GoogleLogin(c *gin.Context) {
+	var req struct {
+		IDToken string `json:"id_token" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Error("failed to bind request", zap.Error(err))
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ip := c.ClientIP()
+	resp, err := h.service.GoogleLogin(req.IDToken, ip)
+	if err != nil {
+		h.logger.Warn("google login failed", zap.Error(err))
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"token":       resp.Token,
+		"user_id":     resp.UserID,
+		"is_new_user": resp.IsNewUser,
+		"account":     resp.Account,
+	})
+}
+
 // 获取当前用户信息
 func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 	userID, exists := c.Get("user_id")

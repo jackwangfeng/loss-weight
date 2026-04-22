@@ -2,6 +2,7 @@ package routes
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/your-org/loss-weight/backend/internal/auth"
 	"github.com/your-org/loss-weight/backend/internal/config"
 	"github.com/your-org/loss-weight/backend/internal/handlers"
 	"github.com/your-org/loss-weight/backend/internal/middleware"
@@ -99,19 +100,20 @@ func SetupAIRoutes(v1 *gin.RouterGroup, db *gorm.DB, logger *zap.Logger, cfg *co
 	}
 }
 
-func SetupAuthRoutes(v1 *gin.RouterGroup, db *gorm.DB, logger *zap.Logger) {
-	authService := services.NewAuthService(db, logger)
+func SetupAuthRoutes(v1 *gin.RouterGroup, db *gorm.DB, logger *zap.Logger, googleClientID string, tokens *auth.TokenIssuer) {
+	authService := services.NewAuthService(db, logger, googleClientID, tokens)
 	authHandler := handlers.NewAuthHandler(authService, logger)
 
-	auth := v1.Group("/auth")
+	authGroup := v1.Group("/auth")
 	{
-		// 公开
-		auth.POST("/sms/send", authHandler.SendSMS)
-		auth.POST("/sms/login", authHandler.PhoneLogin)
+		// Public
+		authGroup.POST("/sms/send", authHandler.SendSMS)
+		authGroup.POST("/sms/login", authHandler.PhoneLogin)
+		authGroup.POST("/google", authHandler.GoogleLogin)
 
-		// 需鉴权
-		protected := auth.Group("")
-		protected.Use(middleware.AuthRequired())
+		// Protected
+		protected := authGroup.Group("")
+		protected.Use(middleware.AuthRequired(tokens))
 		protected.GET("/me", authHandler.GetCurrentUser)
 		protected.POST("/logout", authHandler.Logout)
 	}

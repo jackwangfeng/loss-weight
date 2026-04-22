@@ -6,3 +6,5 @@ database_url: postgresql://postgres:postgres@localhost:5434/lossweight?sslmode=d
 redis_url: redis://localhost:6379/0
 secret_key: your-secret-key-change-in-production
 log_level: debug
+
+google_client_id: "604310975641-chq87tal9oii607rigc1uq59vjsirgas.apps.googleusercontent.com"

@@ -72,6 +72,10 @@
   "authCodeRequired": "Code required",
   "authCodeWrongLength": "Code must be 6 digits",
   "authTerms": "By signing in you agree to the Terms & Privacy Policy.",
+  "authContinueWithGoogle": "Continue with Google",
+  "authOrDivider": "or",
+  "errorGoogleSignInFailed": "Google sign-in failed: {error}",
+  "@errorGoogleSignInFailed": { "placeholders": { "error": { "type": "String" } } },
 
   "profileTitle": "Profile",
   "profileNotSignedIn": "Not signed in",

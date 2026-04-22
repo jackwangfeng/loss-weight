@@ -9,7 +9,7 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:8889';
 
 test.describe('Flutter Web Canvas', () => {
   test('Flutter Web loads', async ({ page }) => {
-    await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
 
     const html = await page.content();
     expect(html).toContain('flutter');
@@ -28,20 +28,20 @@ test.describe('Flutter Web Canvas', () => {
   });
 
   test('Flutter Web canvas visible', async ({ page }) => {
-    await page.goto(BASE_URL, { waitUntil: 'networkidle' });
-    await page.waitForTimeout(3000);
+    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
 
+    // toBeVisible auto-retries up to the default timeout — no fixed sleep needed.
     const canvas = page.locator('canvas').first();
-    await expect(canvas).toBeVisible();
+    await expect(canvas).toBeVisible({ timeout: 15000 });
 
     await page.screenshot({ path: 'test-2-canvas-visible.png', fullPage: true });
     console.log('Canvas visible, screenshot saved');
   });
 
   test('page ships Flutter bootstrap assets', async ({ page }) => {
-    await page.goto(BASE_URL, { waitUntil: 'networkidle' });
-    await page.waitForTimeout(3000);
+    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
 
+    // bootstrap script is synchronous in the HTML — visible by DCL.
     const mainDartLoaded = await page.evaluate(() => {
       return document.body.innerHTML.includes('main.dart.js') ||
              document.body.innerHTML.includes('flutter_bootstrap.js');
@@ -54,7 +54,7 @@ test.describe('Flutter Web Canvas', () => {
 test.describe('Semantics interaction', () => {
   // Wait for Flutter's semantics tree to expose at least N tabs.
   async function waitForTabs(page, minCount = 4) {
-    await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(
       (n) => document.querySelectorAll('flt-semantics[role="tab"]').length >= n,
       minCount,

@@ -113,10 +113,11 @@ class AIService {
     }
   }
 
-  /// 创建对话线程
+  /// Create a new conversation thread. An empty title lets the backend
+  /// auto-title from the first user message.
   Future<AIChatThread> createThread({
     required int userId,
-    String title = '新对话',
+    String title = 'New chat',
   }) async {
     final response = await _apiService.post(
       '/ai/chat/thread?user_id=$userId',
@@ -126,7 +127,7 @@ class AIService {
     if (response.statusCode == 201) {
       return AIChatThread.fromJson(response.data);
     } else {
-      throw Exception('创建对话失败');
+      throw Exception('Failed to create thread');
     }
   }
 

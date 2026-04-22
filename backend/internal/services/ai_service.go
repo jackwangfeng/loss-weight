@@ -31,7 +31,7 @@ type StreamChunk struct {
 const defaultGeminiURL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
 // errLLMNotConfigured 当 debug=false 且 LLM key 缺失时返回。
-var errLLMNotConfigured = errors.New("LLM 未配置：请设置 GEMINI_API_KEY 环境变量，或在 debug 模式下启动以使用 mock")
+var errLLMNotConfigured = errors.New("LLM not configured: set GEMINI_API_KEY or run in debug mode to use mocks")
 
 type AIService struct {
 	db           *gorm.DB
@@ -164,9 +164,9 @@ func (s *AIService) RecognizeFood(req *RecognizeFoodRequest) (*RecognizeFoodResp
 		if !s.allowMock {
 			return nil, errLLMNotConfigured
 		}
-		s.logger.Warn("vision API not configured — 返回 mock（debug 模式）")
+		s.logger.Warn("vision API not configured — returning mock (debug mode)")
 		return &RecognizeFoodResponse{
-			FoodName:      "测试食物",
+			FoodName:      "Test food",
 			Calories:      300,
 			Protein:       15,
 			Carbohydrates: 40,
@@ -176,25 +176,23 @@ func (s *AIService) RecognizeFood(req *RecognizeFoodRequest) (*RecognizeFoodResp
 		}, nil
 	}
 
-	// 把 image URL / data URL 统一转成 base64 + mime，Gemini 只接 inline_data
+	// Normalize image URL / data URL into base64 + mime for Gemini inline_data.
 	mimeType, b64, err := fetchImageAsBase64(req.ImageURL)
 	if err != nil {
 		s.logger.Error("failed to fetch image", zap.Error(err))
-		return nil, fmt.Errorf("获取图片失败: %w", err)
+		return nil, fmt.Errorf("failed to fetch image: %w", err)
 	}
 
-	prompt := `请分析这张食物图片，返回以下格式的信息（只返回 JSON，不要其他内容）：
+	prompt := `Analyze this food photo and return the information below. JSON ONLY — no markdown fence, no prose.
 {
-  "food_name": "食物名称",
-  "calories": 热量数值(每100克，千卡),
-  "protein": 蛋白质含量(每100克，克),
-  "carbohydrates": 碳水化合物(每100克，克),
-  "fat": 脂肪含量(每100克，克),
-  "fiber": 膳食纤维(每100克，克),
-  "confidence": 识别置信度(0-1)
-}
-
-请只返回 JSON 格式，不要包含其他文字。`
+  "food_name": "short English name of the dish",
+  "calories": integer kcal per 100 g,
+  "protein": grams of protein per 100 g,
+  "carbohydrates": grams of carbs per 100 g,
+  "fat": grams of fat per 100 g,
+  "fiber": grams of fiber per 100 g,
+  "confidence": 0.0-1.0
+}`
 
 	payload := map[string]interface{}{
 		"contents": []map[string]interface{}{
@@ -282,9 +280,9 @@ func (s *AIService) RecognizeFood(req *RecognizeFoodRequest) (*RecognizeFoodResp
 
 	if err := json.Unmarshal([]byte(responseText), &foodInfo); err != nil {
 		s.logger.Error("failed to parse food info JSON", zap.Error(err))
-		// 如果解析失败，返回默认结构
+		// Parse failed — return default shape.
 		return &RecognizeFoodResponse{
-			FoodName:      "未知食物",
+			FoodName:      "Unknown food",
 			Calories:      0,
 			Protein:       0,
 			Carbohydrates: 0,
@@ -312,32 +310,32 @@ func (s *AIService) EstimateNutritionFromText(text string) (*RecognizeFoodRespon
 		if !s.allowMock {
 			return nil, errLLMNotConfigured
 		}
-		s.logger.Warn("LLM API not configured — estimate-nutrition 返回 mock（debug 模式）")
+		s.logger.Warn("LLM API not configured — estimate-nutrition returning mock (debug mode)")
 		return &RecognizeFoodResponse{
 			FoodName: text, Calories: 300, Protein: 15,
 			Carbohydrates: 40, Fat: 10, Fiber: 5, Confidence: 0.5,
 		}, nil
 	}
 
-	prompt := fmt.Sprintf(`根据以下食物描述估算营养素。严格只返回 JSON，不要 markdown 代码块，不要其他文字。
+	prompt := fmt.Sprintf(`Estimate nutrition from the food description below. JSON ONLY — no markdown fence, no prose.
 
-描述：%s
+Description: %s
 
-JSON 格式：
+JSON schema:
 {
-  "food_name": "简洁的食物名",
-  "calories": 总热量(千卡),
-  "protein": 蛋白质(克),
-  "carbohydrates": 碳水化合物(克),
-  "fat": 脂肪(克),
-  "fiber": 膳食纤维(克),
-  "confidence": 估算置信度(0-1)
+  "food_name": "short English name of the dish",
+  "calories": total kcal,
+  "protein": grams of protein,
+  "carbohydrates": grams of carbs,
+  "fat": grams of fat,
+  "fiber": grams of fiber,
+  "confidence": 0.0-1.0
 }
 
-注意：
-- 如果描述含具体分量（如 200g / 一碗），按分量算总量；否则按一个标准份估算
-- 数字不要带单位
-- confidence: 描述越具体越高，越模糊越低`, text)
+Rules:
+- If the description gives a concrete portion (e.g. "200g", "1 cup"), compute the total for that portion; otherwise estimate one standard serving.
+- Numbers without units.
+- Higher confidence when the description is concrete; lower when it's vague.`, text)
 
 	resp, err := s.callLLM([]ChatMessage{{Role: "user", Content: prompt}})
 	if err != nil {
@@ -346,7 +344,7 @@ JSON 格式：
 	jsonText := stripMarkdownCodeFence(resp.Content)
 	var out RecognizeFoodResponse
 	if err := json.Unmarshal([]byte(jsonText), &out); err != nil {
-		return nil, fmt.Errorf("解析 LLM 返回失败: %w (原文: %s)", err, resp.Content)
+		return nil, fmt.Errorf("failed to parse LLM response: %w (raw: %s)", err, resp.Content)
 	}
 	return &out, nil
 }
@@ -358,28 +356,28 @@ func (s *AIService) ParseWeightFromText(text string) (*ParseWeightResponse, erro
 		if !s.allowMock {
 			return nil, errLLMNotConfigured
 		}
-		s.logger.Warn("LLM API not configured — parse-weight 返回 mock（debug 模式）")
+		s.logger.Warn("LLM API not configured — parse-weight returning mock (debug mode)")
 		return &ParseWeightResponse{Weight: 70, Confidence: 0.5}, nil
 	}
 
-	prompt := fmt.Sprintf(`从下面的文本里解析体重数据。严格只返回 JSON，不要 markdown 代码块。
+	prompt := fmt.Sprintf(`Parse weight data from the text below. JSON ONLY — no markdown fence, no prose.
 
-文本：%s
+Text: %s
 
-JSON 格式：
+JSON schema:
 {
-  "weight": 体重(kg, 必需),
-  "body_fat": 体脂率(百分比, 没有则 0),
-  "muscle": 肌肉量(kg, 没有则 0),
-  "water": 水分(百分比, 没有则 0),
-  "note": "如果文本里有备注/心情/时段标注（如「早」「晚」），简短 20 字以内；否则空串",
-  "confidence": 0-1
+  "weight": weight in kg (required),
+  "body_fat": body fat percentage (0 if none),
+  "muscle": muscle mass in kg (0 if none),
+  "water": water percentage (0 if none),
+  "note": "short note if the text mentions context (e.g. 'morning', 'post-workout'), max 20 chars; else empty",
+  "confidence": 0.0-1.0
 }
 
-规则：
-- 数字不带单位
-- 如果只有一个体重数字，就填 weight 字段
-- 如果多次测量，取最近/最后一个`, text)
+Rules:
+- Numbers without units.
+- If there's a single weight number, populate "weight".
+- If multiple measurements appear, take the last/most recent one.`, text)
 
 	resp, err := s.callLLM([]ChatMessage{{Role: "user", Content: prompt}})
 	if err != nil {
@@ -388,7 +386,7 @@ JSON 格式：
 	jsonText := stripMarkdownCodeFence(resp.Content)
 	var out ParseWeightResponse
 	if err := json.Unmarshal([]byte(jsonText), &out); err != nil {
-		return nil, fmt.Errorf("解析 LLM 返回失败: %w (原文: %s)", err, resp.Content)
+		return nil, fmt.Errorf("failed to parse LLM response: %w (raw: %s)", err, resp.Content)
 	}
 	return &out, nil
 }
@@ -400,29 +398,30 @@ func (s *AIService) EstimateExerciseFromText(text string) (*EstimateExerciseResp
 		if !s.allowMock {
 			return nil, errLLMNotConfigured
 		}
-		s.logger.Warn("LLM API not configured — estimate-exercise 返回 mock（debug 模式）")
+		s.logger.Warn("LLM API not configured — estimate-exercise returning mock (debug mode)")
 		return &EstimateExerciseResponse{
 			Type: text, DurationMin: 30, Intensity: "medium",
 			CaloriesBurned: 200, Confidence: 0.5,
 		}, nil
 	}
-	prompt := fmt.Sprintf(`根据以下运动描述估算。严格只返回 JSON，不要 markdown 代码块。
+	prompt := fmt.Sprintf(`Estimate the workout described below. Return JSON ONLY — no markdown fence, no prose.
 
-描述：%s
+Description: %s
 
-JSON 格式：
+JSON schema:
 {
-  "type": "运动类型（跑步/游泳/力量/瑜伽/骑行/走路/徒步/球类/舞蹈/HIIT 等中文简称）",
-  "duration_min": 时长(分钟, 整数),
+  "type": "short English activity name (running / cycling / lifting / yoga / swimming / walking / HIIT / tennis / ...)",
+  "duration_min": integer minutes,
   "intensity": "low | medium | high",
-  "calories_burned": 消耗热量(千卡),
-  "distance": 距离(公里, 没有则填 0),
-  "confidence": 置信度(0-1)
+  "calories_burned": integer kcal,
+  "distance": km (0 if not applicable),
+  "confidence": 0.0-1.0
 }
 
-规则：
-- 按一个成年人（70kg 左右）的标准消耗估
-- 如果描述含"轻度/散步/慢走"→ low；常见有氧 → medium；"冲刺/HIIT/高强度" → high`, text)
+Rules:
+- Assume a 70 kg adult man for baseline burn.
+- "walk / light / stretch" → low; standard cardio / moderate lifting → medium; "HIIT / sprint / heavy lifting" → high.
+- Keep "type" short and canonical (single word or short phrase).`, text)
 
 	resp, err := s.callLLM([]ChatMessage{{Role: "user", Content: prompt}})
 	if err != nil {
@@ -431,7 +430,7 @@ JSON 格式：
 	jsonText := stripMarkdownCodeFence(resp.Content)
 	var out EstimateExerciseResponse
 	if err := json.Unmarshal([]byte(jsonText), &out); err != nil {
-		return nil, fmt.Errorf("解析 LLM 返回失败: %w (原文: %s)", err, resp.Content)
+		return nil, fmt.Errorf("failed to parse LLM response: %w (raw: %s)", err, resp.Content)
 	}
 	return &out, nil
 }
@@ -483,7 +482,7 @@ func (s *AIService) GetDailyBrief(userID uint) (*DailyBriefResponse, error) {
 			out.Brief = ""
 			return out, nil
 		}
-		out.Brief = fmt.Sprintf("今日已摄入 %.0f kcal，消耗 %.0f kcal，剩余额度 %.0f kcal。继续保持！",
+		out.Brief = fmt.Sprintf("Today: in %.0f kcal, out %.0f kcal, %.0f kcal left.",
 			eaten, burned, remaining)
 		return out, nil
 	}
@@ -492,15 +491,15 @@ func (s *AIService) GetDailyBrief(userID uint) (*DailyBriefResponse, error) {
 	mealHint := ""
 	switch {
 	case hour < 10:
-		mealHint = "即将进入早餐/午餐时段"
+		mealHint = "pre-breakfast / breakfast window"
 	case hour < 14:
-		mealHint = "午餐或下午茶时段"
+		mealHint = "lunch window"
 	case hour < 17:
-		mealHint = "距离晚餐还有一段时间"
+		mealHint = "afternoon — a while before dinner"
 	case hour < 21:
-		mealHint = "晚餐时段"
+		mealHint = "dinner window"
 	default:
-		mealHint = "接近睡前"
+		mealHint = "close to bedtime"
 	}
 
 	// 用户长期事实（从记忆里取 top-10）
@@ -516,44 +515,44 @@ func (s *AIService) GetDailyBrief(userID uint) (*DailyBriefResponse, error) {
 	}
 	exerciseLines := make([]string, 0, len(exercises))
 	for _, e := range exercises {
-		exerciseLines = append(exerciseLines, fmt.Sprintf("%s %d 分钟 (%.0f kcal)",
+		exerciseLines = append(exerciseLines, fmt.Sprintf("%s %d min (%.0f kcal)",
 			e.Type, e.DurationMin, e.CaloriesBurned))
 	}
 
-	prompt := fmt.Sprintf(`你是用户的减肥 AI 助理，负责首页的"今日简报"。
+	prompt := fmt.Sprintf(`You are CutBro, an AI cutting coach for men who lift. Write today's short home-screen brief for this user.
 
-## 当前状态
-- 现在时刻：%s（%s）
-- 目标热量：%.0f kcal
-- 今日摄入：%.0f kcal
-- 今日消耗：%.0f kcal
-- 剩余额度：%.0f kcal
+## Current state
+- Time: %s (%s)
+- Calorie target: %.0f kcal
+- Eaten today: %.0f kcal
+- Burned today: %.0f kcal
+- Remaining: %.0f kcal
 
-## 今日饮食
+## Food today
 %s
 
-## 今日运动
+## Training today
 %s
 
-## 用户长期事实
+## Long-term user facts
 %s
 
-## 写作要求
-- 一段 60-120 字的中文
-- 先温和点评当前状态（是否合理、节奏如何），再给一条具体、可执行的下一步建议（下一餐吃什么 / 要不要加一次轻运动 / 休息一下 等）
-- 结合用户的约束和偏好（牛奶过敏就别建议喝奶、讨厌跑步就别推荐跑）
-- 不要列表、不要 emoji、不要空行、不要开头说"你好"之类`,
+## Writing requirements
+- ONE short English paragraph, 40-80 words.
+- Open with a quick read of where they stand (on pace / over / under), then ONE concrete next step (specific food for next meal / skip or add a walk / push or relax).
+- Respect user constraints and preferences (no dairy if they're lactose intolerant; no running if they hate cardio).
+- No lists, no emoji, no blank lines, no "Hi" / "Hello" opener. Get to the point.`,
 		now.Format("15:04"), mealHint,
 		target, eaten, burned, remaining,
-		strings.Join(append([]string{"（无）"}, foodLines...), "\n"),
-		strings.Join(append([]string{"（无）"}, exerciseLines...), "\n"),
-		strings.Join(append([]string{"（暂无积累）"}, factLines...), "\n"),
+		strings.Join(append([]string{"(none)"}, foodLines...), "\n"),
+		strings.Join(append([]string{"(none)"}, exerciseLines...), "\n"),
+		strings.Join(append([]string{"(none recorded yet)"}, factLines...), "\n"),
 	)
 
 	resp, err := s.callLLM([]ChatMessage{{Role: "user", Content: prompt}})
 	if err != nil {
 		s.logger.Warn("daily-brief LLM failed", zap.Error(err))
-		out.Brief = fmt.Sprintf("今日摄入 %.0f kcal，消耗 %.0f kcal，剩余 %.0f kcal。",
+		out.Brief = fmt.Sprintf("In %.0f kcal, out %.0f kcal, %.0f kcal left.",
 			eaten, burned, remaining)
 		return out, nil
 	}
@@ -562,18 +561,16 @@ func (s *AIService) GetDailyBrief(userID uint) (*DailyBriefResponse, error) {
 }
 
 func (s *AIService) GetEncouragement(req *GetEncouragementRequest) (*GetEncouragementResponse, error) {
-	prompt := fmt.Sprintf(`你是一位专业的减肥鼓励助手。请根据以下用户情况，用温暖、鼓励的语气给用户写一段鼓励的话：
+	prompt := fmt.Sprintf(`You are CutBro, a direct AI cutting coach. Write a short progress message for the user below. Data-driven tone, no pep-talk clichés, no emoji.
 
-用户情况：
-- 当前体重：%.1f kg
-- 目标体重：%.1f kg
-- 已减重：%.1f kg
-- 坚持天数：%d 天
-- 成就：%v
+Status:
+- Weight: %.1f kg
+- Target: %.1f kg
+- Lost so far: %.1f kg
+- Days active: %d
+- Milestones: %v
 
-请：
-1. 写一段 100-200 字的鼓励话语
-2. 给出 2-3 条实用的建议`,
+Write ONE paragraph, 40-80 English words. Name the numbers, acknowledge the delta, point forward. No bullet list, no preamble.`,
 		req.CurrentWeight,
 		req.TargetWeight,
 		req.WeightLoss,
@@ -585,13 +582,13 @@ func (s *AIService) GetEncouragement(req *GetEncouragementRequest) (*GetEncourag
 		if !s.allowMock {
 			return nil, errLLMNotConfigured
 		}
-		s.logger.Warn("LLM API not configured — encouragement 返回 mock（debug 模式）")
+		s.logger.Warn("LLM API not configured — encouragement returns mock (debug mode)")
 		return &GetEncouragementResponse{
-			Message: fmt.Sprintf("太棒了！你已经坚持了 %d 天，减重 %.1f kg！继续保持，你一定能达成目标！💪", req.DaysActive, req.WeightLoss),
+			Message: fmt.Sprintf("Day %d in, down %.1f kg. Pace looks sustainable — keep compounding.", req.DaysActive, req.WeightLoss),
 			Suggestions: []string{
-				"今天记得多喝水，保持身体水分",
-				"晚餐可以选择清淡的蔬菜沙拉",
-				"睡前做 10 分钟拉伸，帮助睡眠",
+				"Hit 2.5 L water today to blunt hunger.",
+				"Swap rice for extra greens at dinner to save ~200 kcal.",
+				"10 min of mobility before bed to keep sleep quality up.",
 			},
 		}, nil
 	}
@@ -609,9 +606,9 @@ func (s *AIService) GetEncouragement(req *GetEncouragementRequest) (*GetEncourag
 	return &GetEncouragementResponse{
 		Message: resp.Content,
 		Suggestions: []string{
-			"保持当前的饮食节奏",
-			"适当增加运动量",
-			"保证充足睡眠",
+			"Keep your current calorie deficit steady; don't cut deeper this week.",
+			"Add one extra training session if sleep and recovery allow.",
+			"Protect 7-8h sleep — recovery is half the cut.",
 		},
 	}, nil
 }
@@ -647,8 +644,8 @@ func (s *AIService) Chat(req *ChatRequest) (*ChatResponse, error) {
 		if !s.allowMock {
 			return nil, errLLMNotConfigured
 		}
-		s.logger.Warn("LLM API not configured — chat 返回 mock（debug 模式）")
-		return s.saveAssistantReply(req.UserID, req.ThreadID, "你好！我是你的 AI 减肥助手。有什么我可以帮助你的吗？")
+		s.logger.Warn("LLM API not configured — chat returning mock (debug mode)")
+		return s.saveAssistantReply(req.UserID, req.ThreadID, "Hey, I'm your CutBro coach. What's the plan today — track food, review training, or sort out your macros?")
 	}
 
 	// [3] 组装完整上下文
@@ -722,9 +719,9 @@ func (s *AIService) assembleChatMessages(userID uint, threadID, query string) ([
 	}
 	if len(hits) > 0 {
 		var sb strings.Builder
-		sb.WriteString("以下是从过往对话中检索到的相关片段，供参考：\n")
+		sb.WriteString("Relevant snippets retrieved from prior conversations (for your reference):\n")
 		for _, h := range hits {
-			sb.WriteString(fmt.Sprintf("- [%s · 相似度 %.2f] %s: %s\n",
+			sb.WriteString(fmt.Sprintf("- [%s · similarity %.2f] %s: %s\n",
 				h.Msg.CreatedAt.Format("2006-01-02"),
 				h.Similarity,
 				h.Msg.Role, truncate(h.Msg.Content, 120)))
@@ -986,7 +983,7 @@ func (s *AIService) ChatStream(ctx context.Context, req *ChatRequest) (<-chan St
 		out := make(chan StreamChunk, 2)
 		go func() {
 			defer close(out)
-			text := "你好！我是你的 AI 减肥助手。有什么我可以帮助你的吗？"
+			text := "Hey, I'm your CutBro coach. What's the plan today — track food, review training, or sort out your macros?"
 			out <- StreamChunk{Delta: text}
 			m := &models.AIChatMessage{
 				UserID: req.UserID, Role: "assistant",
@@ -1032,7 +1029,7 @@ func (s *AIService) ChatStream(ctx context.Context, req *ChatRequest) (<-chan St
 		full := sb.String()
 		if full == "" {
 			select {
-			case out <- StreamChunk{Done: true, Error: "LLM 返回为空"}:
+			case out <- StreamChunk{Done: true, Error: "LLM returned empty response"}:
 			case <-ctx.Done():
 			}
 			return
@@ -1044,7 +1041,7 @@ func (s *AIService) ChatStream(ctx context.Context, req *ChatRequest) (<-chan St
 		if err := s.db.Create(m).Error; err != nil {
 			s.logger.Error("save assistant message failed", zap.Error(err))
 			select {
-			case out <- StreamChunk{Done: true, Error: "保存失败"}:
+			case out <- StreamChunk{Done: true, Error: "failed to save assistant message"}:
 			case <-ctx.Done():
 			}
 			return
@@ -1182,8 +1179,9 @@ func (s *AIService) DeleteChatThread(id uint) error {
 	})
 }
 
-// maybeAutoTitleThread：thread 首条消息时，用消息内容生成标题。
-// 只在 title 为空或等于默认值"新对话"时替换。
+// maybeAutoTitleThread: derive a title from the first user message.
+// Only replaces the title if it's empty or the client's default placeholder
+// ("New chat" / legacy "新对话").
 func (s *AIService) maybeAutoTitleThread(threadID, firstUserMsg string) {
 	if threadID == "" || firstUserMsg == "" {
 		return
@@ -1193,13 +1191,13 @@ func (s *AIService) maybeAutoTitleThread(threadID, firstUserMsg string) {
 		First(&t).Error; err != nil {
 		return
 	}
-	if t.Title != "" && t.Title != "新对话" {
+	if t.Title != "" && t.Title != "New chat" && t.Title != "新对话" {
 		return
 	}
 	title := strings.ReplaceAll(firstUserMsg, "\n", " ")
 	r := []rune(title)
-	if len(r) > 20 {
-		title = string(r[:20]) + "…"
+	if len(r) > 40 {
+		title = string(r[:40]) + "…"
 	}
 	s.db.Model(&t).Update("title", title)
 }

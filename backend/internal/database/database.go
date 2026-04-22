@@ -65,6 +65,23 @@ func Migrate(db *gorm.DB, models ...interface{}) error {
 				return err
 			}
 		}
+
+		// user_accounts.phone was NOT NULL in the SMS-only era. Google sign-in
+		// introduces accounts with no phone — drop the NOT NULL so the pointer
+		// field in models.UserAccount can write NULL. AutoMigrate won't relax
+		// constraints on its own.
+		var phoneNotNull bool
+		db.Raw(`SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_name='user_accounts'
+			  AND column_name='phone'
+			  AND is_nullable='NO'
+		)`).Scan(&phoneNotNull)
+		if phoneNotNull {
+			if err := db.Exec("ALTER TABLE user_accounts ALTER COLUMN phone DROP NOT NULL").Error; err != nil {
+				return err
+			}
+		}
 	}
 
 	if err := db.AutoMigrate(models...); err != nil {

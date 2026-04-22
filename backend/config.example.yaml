@@ -18,6 +18,10 @@ redis_url: "redis://localhost:6379"
 secret_key: "your-secret-key-change-in-production"
 jwt_expire_days: 7
 
+# Google OAuth — Web Client ID (public, from Google Cloud Console → Credentials).
+# Used as the expected audience when verifying Google ID tokens on /v1/auth/google.
+google_client_id: ""
+
 # AI Services
 openai_api_key: ""
 baidu_cv_api_key: ""

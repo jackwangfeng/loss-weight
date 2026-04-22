@@ -191,6 +191,17 @@ class AppLocalizationsEn extends AppLocalizations {
       'By signing in you agree to the Terms & Privacy Policy.';
 
   @override
+  String get authContinueWithGoogle => 'Continue with Google';
+
+  @override
+  String get authOrDivider => 'or';
+
+  @override
+  String errorGoogleSignInFailed(String error) {
+    return 'Google sign-in failed: $error';
+  }
+
+  @override
   String get profileTitle => 'Profile';
 
   @override

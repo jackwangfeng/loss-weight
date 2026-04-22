@@ -23,9 +23,10 @@ type Config struct {
 	LLMAPIURL      string
 	VisionAPIKey   string
 	VisionAPIURL   string
-	OpenAIKey      string
-	BaiduCVKey     string
-	ChromaURL      string
+	OpenAIKey       string
+	BaiduCVKey      string
+	ChromaURL       string
+	GoogleClientID  string // OAuth 2.0 Web Client ID — audience for Google ID tokens
 }
 
 // Load reads configuration from file and environment variables
@@ -58,6 +59,7 @@ func Load(configPath string) (*Config, error) {
 	_ = viper.BindEnv("openai_api_key", "OPENAI_API_KEY")
 	_ = viper.BindEnv("baidu_cv_api_key", "BAIDU_CV_API_KEY")
 	_ = viper.BindEnv("secret_key", "SECRET_KEY")
+	_ = viper.BindEnv("google_client_id", "GOOGLE_CLIENT_ID")
 
 	// Try to read config file (optional)
 	if err := viper.ReadInConfig(); err != nil {
@@ -81,9 +83,10 @@ func Load(configPath string) (*Config, error) {
 		LLMAPIURL:     viper.GetString("gemini_api_url"),
 		VisionAPIKey:  viper.GetString("vision_api_key"),
 		VisionAPIURL:  viper.GetString("vision_api_url"),
-		OpenAIKey:     viper.GetString("openai_api_key"),
-		BaiduCVKey:    viper.GetString("baidu_cv_api_key"),
-		ChromaURL:     viper.GetString("chroma_url"),
+		OpenAIKey:      viper.GetString("openai_api_key"),
+		BaiduCVKey:     viper.GetString("baidu_cv_api_key"),
+		ChromaURL:      viper.GetString("chroma_url"),
+		GoogleClientID: viper.GetString("google_client_id"),
 	}
 
 	return config, nil

@@ -6,6 +6,7 @@ import (
 	"log"
 
 	"github.com/gin-gonic/gin"
+	"github.com/your-org/loss-weight/backend/internal/auth"
 	"github.com/your-org/loss-weight/backend/internal/config"
 	"github.com/your-org/loss-weight/backend/internal/database"
 	"github.com/your-org/loss-weight/backend/internal/middleware"
@@ -75,7 +76,8 @@ func main() {
 	// API v1 routes
 	v1 := r.Group("/v1")
 	{
-		routes.SetupAuthRoutes(v1, db, logger)
+		tokens := auth.NewTokenIssuer(cfg.SecretKey, cfg.JWTExpireDays)
+		routes.SetupAuthRoutes(v1, db, logger, cfg.GoogleClientID, tokens)
 		routes.SetupUserRoutes(v1, db, logger)
 		routes.SetupFoodRoutes(v1, db, logger)
 		routes.SetupWeightRoutes(v1, db, logger)

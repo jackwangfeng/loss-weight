@@ -190,71 +190,71 @@ func (s *AIService) searchRelevantMessages(
 
 // ---- System Prompt 组装 -----------------------------------------------------
 
-// buildSystemPrompt 组装「用户画像 + 长期记忆 + 线程摘要」
+// buildSystemPrompt assembles {user profile + long-term memory + thread summary}.
 func (s *AIService) buildSystemPrompt(userID uint, threadID string) string {
 	var sb strings.Builder
-	sb.WriteString("你是一位温暖、专业的减肥 AI 助理。基于以下关于用户的信息，给出贴合实际、可执行的建议。\n\n")
+	sb.WriteString("You are CutBro, a direct, data-driven AI cutting coach for men who lift. ")
+	sb.WriteString("Give concrete, actionable guidance grounded in the user's actual numbers below. ")
+	sb.WriteString("Skip fluff, skip pep-talk, skip emoji. Use imperial-agnostic metric units (kg / kcal / g).\n\n")
 
-	// [1] 用户画像
+	// [1] Profile
 	if profile := s.loadUserProfile(userID); profile != nil {
-		sb.WriteString("## 用户画像\n")
+		sb.WriteString("## User profile\n")
 		if profile.Nickname != "" {
-			sb.WriteString(fmt.Sprintf("- 昵称：%s\n", profile.Nickname))
+			sb.WriteString(fmt.Sprintf("- Name: %s\n", profile.Nickname))
 		}
 		if profile.Height > 0 {
-			sb.WriteString(fmt.Sprintf("- 身高：%.1f cm\n", profile.Height))
+			sb.WriteString(fmt.Sprintf("- Height: %.1f cm\n", profile.Height))
 		}
 		if profile.CurrentWeight > 0 {
-			sb.WriteString(fmt.Sprintf("- 当前体重：%.1f kg", profile.CurrentWeight))
+			sb.WriteString(fmt.Sprintf("- Weight: %.1f kg", profile.CurrentWeight))
 			if profile.TargetWeight > 0 {
-				sb.WriteString(fmt.Sprintf("，目标 %.1f kg（差 %.1f kg）",
+				sb.WriteString(fmt.Sprintf(", target %.1f kg (delta %.1f kg)",
 					profile.TargetWeight, profile.CurrentWeight-profile.TargetWeight))
 			}
 			sb.WriteString("\n")
 		}
 		if profile.TargetCalorie > 0 {
-			sb.WriteString(fmt.Sprintf("- 每日目标热量：%.0f kcal\n", profile.TargetCalorie))
+			sb.WriteString(fmt.Sprintf("- Daily calorie target: %.0f kcal\n", profile.TargetCalorie))
 		}
 
-		// 今日饮食
 		if foods := s.loadTodayFood(userID); len(foods) > 0 {
-			sb.WriteString("- 今日饮食：")
+			sb.WriteString("- Eaten today: ")
 			parts := make([]string, 0, len(foods))
 			var totalCal float32
 			for _, f := range foods {
-				parts = append(parts, fmt.Sprintf("%s(%.0fkcal)", f.name, f.calories))
+				parts = append(parts, fmt.Sprintf("%s (%.0f kcal)", f.name, f.calories))
 				totalCal += f.calories
 			}
-			sb.WriteString(strings.Join(parts, "、"))
-			sb.WriteString(fmt.Sprintf("，合计 %.0f kcal", totalCal))
+			sb.WriteString(strings.Join(parts, ", "))
+			sb.WriteString(fmt.Sprintf(" — total %.0f kcal", totalCal))
 			sb.WriteString("\n")
 		}
 
-		// 体重趋势
 		if trend := s.loadWeightTrend(userID, 7); trend != "" {
-			sb.WriteString("- 最近 7 天体重：" + trend + "\n")
+			sb.WriteString("- Last 7 days weight: " + trend + "\n")
 		}
 		sb.WriteString("\n")
 	}
 
-	// [2] 长期记忆
+	// [2] Long-term facts
 	facts := s.loadUserFacts(userID, 20)
 	if len(facts) > 0 {
-		sb.WriteString("## 用户事实（历史对话中积累的偏好与约束）\n")
+		sb.WriteString("## User facts (preferences / constraints accumulated over prior chats)\n")
 		for _, f := range facts {
 			sb.WriteString(fmt.Sprintf("- [%s] %s\n", f.Category, f.Fact))
 		}
 		sb.WriteString("\n")
 	}
 
-	// [3] 线程摘要
+	// [3] Thread summary
 	if summary := s.loadThreadSummary(threadID); summary != "" {
-		sb.WriteString("## 过往对话摘要\n")
+		sb.WriteString("## Prior conversation summary\n")
 		sb.WriteString(summary)
 		sb.WriteString("\n\n")
 	}
 
-	sb.WriteString("请用中文回答。回答要精炼、具体，避免泛泛而谈。")
+	sb.WriteString("Reply in English. Be specific. Name the number, the food, or the protocol — never vague advice.")
 	return sb.String()
 }
 
@@ -310,13 +310,13 @@ func (s *AIService) loadWeightTrend(userID uint, days int) string {
 	first := records[0].Weight
 	last := records[len(records)-1].Weight
 	diff := last - first
-	direction := "持平"
+	direction := "flat"
 	if diff < -0.1 {
-		direction = fmt.Sprintf("下降 %.1fkg", -diff)
+		direction = fmt.Sprintf("down %.1f kg", -diff)
 	} else if diff > 0.1 {
-		direction = fmt.Sprintf("上升 %.1fkg", diff)
+		direction = fmt.Sprintf("up %.1f kg", diff)
 	}
-	return fmt.Sprintf("%s（共 %d 次记录，从 %.1fkg 到 %.1fkg）",
+	return fmt.Sprintf("%s (%d entries, from %.1f kg to %.1f kg)",
 		direction, len(records), first, last)
 }
 
@@ -402,27 +402,27 @@ func (s *AIService) extractFactsAsync(userID uint, threadID string) {
 		convo = append(convo, fmt.Sprintf("%s: %s", m.Role, m.Content))
 	}
 
-	prompt := fmt.Sprintf(`你是信息抽取器。从下面这段用户与 AI 助理的对话中，抽取关于**用户**的结构化事实（偏好、约束、目标、习惯、重要经历）。
+	prompt := fmt.Sprintf(`You are an information extractor. From the conversation below between a user and an AI cutting coach, extract structured **facts about the user** (preferences, constraints, goals, routines, history).
 
-## 已有事实（请避免重复，不要抽类似的）
+## Existing facts (avoid restating or paraphrasing these)
 %s
 
-## 对话
+## Conversation
 %s
 
-## 输出要求
-严格只返回 JSON 数组，不要任何额外文字、不要 markdown 代码块。每个对象：
+## Output
+Return a JSON array ONLY — no markdown fence, no prose. Each item:
 {
   "category": "preference | constraint | goal | routine | history",
-  "fact": "一句话，客观、具体",
+  "fact": "one concise English sentence, objective and specific",
   "confidence": 0.0-1.0
 }
 
-规则：
-- 只抽和减肥/健康/饮食/运动/生活习惯相关的
-- 只抽确定事实，不臆测
-- 如果没有新的可抽，返回 []
-- 每条 fact 不超过 30 字`,
+Rules:
+- Only extract facts relevant to fat loss / training / diet / lifestyle.
+- Only extract confirmed facts. Do not infer.
+- If nothing new is worth extracting, return [].
+- Each fact ≤ 140 characters.`,
 		strings.Join(existingLines, "\n"),
 		strings.Join(convo, "\n"),
 	)
@@ -504,19 +504,19 @@ func (s *AIService) summarizeThreadAsync(threadDBID uint, threadID string) {
 		convo = append(convo, fmt.Sprintf("%s: %s", m.Role, m.Content))
 	}
 
-	prompt := fmt.Sprintf(`以下是一段用户与减肥 AI 助理的对话片段，请压缩成摘要。
+	prompt := fmt.Sprintf(`Below is a slice of a conversation between the user and an AI cutting coach. Compress it into a running summary.
 
-## 已有摘要（如果有，请把新片段的要点合并进去）
+## Existing summary (merge new key points into it, if any)
 %s
 
-## 本轮对话
+## This slice
 %s
 
-## 要求
-- 中文，200-400 字
-- 聚焦：用户提过的问题、获得的建议、表达的情绪/状态变化、重要事实
-- 去掉寒暄
-- 不要加开头"这段对话"这种 meta 词，直接写内容`,
+## Requirements
+- English, 150-300 words.
+- Focus on: what the user asked, advice given, status/mood shifts, notable facts.
+- Drop small-talk.
+- Do NOT start with meta phrases like "In this conversation...". Write the content directly.`,
 		prev,
 		strings.Join(convo, "\n"),
 	)

@@ -1,31 +1,38 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"os"
 	"time"
 
+	"github.com/your-org/loss-weight/backend/internal/auth"
 	"github.com/your-org/loss-weight/backend/internal/models"
 	"go.uber.org/zap"
+	"google.golang.org/api/idtoken"
 	"gorm.io/gorm"
 )
 
 type AuthService struct {
-	db         *gorm.DB
-	logger     *zap.Logger
-	skipVerify bool // 是否跳过验证码校验（测试模式）
+	db             *gorm.DB
+	logger         *zap.Logger
+	skipVerify     bool              // 是否跳过验证码校验（测试模式）
+	googleClientID string            // Google OAuth Web Client ID — expected audience on ID tokens
+	tokens         *auth.TokenIssuer // JWT issuer, shared with middleware for verification
 }
 
-func NewAuthService(db *gorm.DB, logger *zap.Logger) *AuthService {
+func NewAuthService(db *gorm.DB, logger *zap.Logger, googleClientID string, tokens *auth.TokenIssuer) *AuthService {
 	// 从环境变量读取是否跳过验证码校验
 	// 测试模式下，SKIP_SMS_VERIFY=true
 	skipVerify := os.Getenv("SKIP_SMS_VERIFY") == "true"
 
 	return &AuthService{
-		db:         db,
-		logger:     logger,
-		skipVerify: skipVerify,
+		db:             db,
+		logger:         logger,
+		skipVerify:     skipVerify,
+		googleClientID: googleClientID,
+		tokens:         tokens,
 	}
 }
 
@@ -144,8 +151,9 @@ func (s *AuthService) PhoneLogin(phone, code string, ip string) (*LoginResponse,
 	if err := s.db.Where("phone = ?", phone).First(&account).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			// 新用户，创建账号
+			phoneCopy := phone
 			account = models.UserAccount{
-				Phone:       phone,
+				Phone:       &phoneCopy,
 				LastLoginIP: ip,
 			}
 			if err := s.db.Create(&account).Error; err != nil {
@@ -189,9 +197,132 @@ func (s *AuthService) PhoneLogin(phone, code string, ip string) (*LoginResponse,
 		return nil, err
 	}
 
-	// 生成 Token（简单 JWT，生产环境应该使用更安全的实现）
-	token := fmt.Sprintf("token_%d_%s", account.ID, time.Now().Format("20060102150405"))
+	token, err := s.tokens.Issue(account.ID)
+	if err != nil {
+		s.logger.Error("failed to issue token", zap.Error(err))
+		return nil, err
+	}
 
+	return &LoginResponse{
+		Token:     token,
+		UserID:    account.ID,
+		Account:   &account,
+		IsNewUser: isNewUser,
+	}, nil
+}
+
+// GoogleLogin verifies a Google ID token, finds or creates a user account
+// keyed on the stable Google sub (or email fallback), and returns the same
+// LoginResponse shape as PhoneLogin.
+//
+// Token verification: google.golang.org/api/idtoken.Validate checks signature
+// against Google's published public keys, expiry, issuer, and — crucially —
+// that the audience (aud) equals our configured OAuth Web Client ID. That's
+// what prevents another site's token from being replayed against us.
+func (s *AuthService) GoogleLogin(idToken, ip string) (*LoginResponse, error) {
+	if s.googleClientID == "" {
+		return nil, fmt.Errorf("Google 登录未配置（缺少 google_client_id）")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	payload, err := idtoken.Validate(ctx, idToken, s.googleClientID)
+	if err != nil {
+		s.logger.Warn("google id token validation failed", zap.Error(err))
+		return nil, fmt.Errorf("Google 身份验证失败")
+	}
+
+	sub, _ := payload.Claims["sub"].(string)
+	email, _ := payload.Claims["email"].(string)
+	emailVerified, _ := payload.Claims["email_verified"].(bool)
+	name, _ := payload.Claims["name"].(string)
+
+	if sub == "" {
+		return nil, fmt.Errorf("Google 身份信息缺失")
+	}
+	if email == "" || !emailVerified {
+		return nil, fmt.Errorf("Google 邮箱未验证")
+	}
+
+	// Match priority:
+	//   1. GoogleSub — stable identifier, survives email change.
+	//   2. Email — links an existing SMS/email account to Google on first sign-in.
+	//   3. Create new.
+	var account models.UserAccount
+	isNewUser := false
+
+	err = s.db.Where("google_sub = ?", sub).First(&account).Error
+	if err == gorm.ErrRecordNotFound {
+		err = s.db.Where("email = ?", email).First(&account).Error
+		if err == nil {
+			// Existing email match — attach the Google sub to this account.
+			subCopy := sub
+			account.GoogleSub = &subCopy
+		} else if err == gorm.ErrRecordNotFound {
+			// Brand-new account.
+			subCopy := sub
+			emailCopy := email
+			account = models.UserAccount{
+				GoogleSub:   &subCopy,
+				Email:       &emailCopy,
+				LastLoginIP: ip,
+			}
+			if err := s.db.Create(&account).Error; err != nil {
+				s.logger.Error("failed to create google user account", zap.Error(err))
+				return nil, err
+			}
+			isNewUser = true
+		} else {
+			s.logger.Error("failed to query account by email", zap.Error(err))
+			return nil, err
+		}
+	} else if err != nil {
+		s.logger.Error("failed to query account by google_sub", zap.Error(err))
+		return nil, err
+	}
+
+	// Make sure email is recorded even for users found via sub.
+	if account.Email == nil || *account.Email != email {
+		emailCopy := email
+		account.Email = &emailCopy
+	}
+
+	// Ensure a UserProfile exists (same default shape as the SMS flow).
+	if account.UserProfileID == nil {
+		isNewUser = true
+		nickname := name
+		if nickname == "" {
+			nickname = "New user"
+		}
+		defaultProfile := models.UserProfile{
+			OpenID:        fmt.Sprintf("google_%s", sub),
+			Nickname:      nickname,
+			CurrentWeight: 70.0,
+			TargetWeight:  65.0,
+			ActivityLevel: 1,
+			TargetCalorie: 2000,
+		}
+		if err := s.db.Create(&defaultProfile).Error; err != nil {
+			s.logger.Error("failed to create user profile", zap.Error(err))
+		} else {
+			account.UserProfileID = &defaultProfile.ID
+		}
+	}
+
+	now := time.Now()
+	account.LastLoginAt = &now
+	account.LastLoginIP = ip
+	if err := s.db.Save(&account).Error; err != nil {
+		s.logger.Error("failed to update account on google login", zap.Error(err))
+		return nil, err
+	}
+
+	token, err := s.tokens.Issue(account.ID)
+	if err != nil {
+		s.logger.Error("failed to issue token", zap.Error(err))
+		return nil, err
+	}
 	return &LoginResponse{
 		Token:     token,
 		UserID:    account.ID,
