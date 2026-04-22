@@ -41,12 +41,4 @@ class ExerciseRecord {
     );
   }
 
-  String get intensityLabel {
-    switch (intensity) {
-      case 'low':    return '轻度';
-      case 'medium': return '中等';
-      case 'high':   return '高强度';
-      default:       return '';
-    }
-  }
 }

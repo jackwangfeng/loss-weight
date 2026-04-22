@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
+import '../l10n/generated/app_localizations.dart';
 import '../providers/user_provider.dart';
 import '../services/weight_service.dart';
 import '../services/ai_service.dart';
@@ -25,17 +26,19 @@ class _WeightScreenState extends State<WeightScreen> {
   @override
   void initState() {
     super.initState();
-    _loadRecords();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadRecords());
   }
 
   Future<void> _loadRecords() async {
+    if (!mounted) return;
+    final l10n = AppLocalizations.of(context);
     setState(() => _isLoading = true);
     try {
       final userProvider = Provider.of<UserProvider>(context, listen: false);
       if (userProvider.currentUser == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('请先登录')),
+            SnackBar(content: Text(l10n.toastPleaseSignIn)),
           );
         }
         return;
@@ -46,20 +49,22 @@ class _WeightScreenState extends State<WeightScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('加载失败：$e')),
+          SnackBar(content: Text(l10n.errorLoadFailed(e.toString()))),
         );
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: widget.showAppBar
           ? AppBar(
-              title: const Text('体重记录'),
+              title: Text(l10n.weightTitle),
               actions: [
                 IconButton(
                   icon: const Icon(Icons.refresh),
@@ -75,20 +80,21 @@ class _WeightScreenState extends State<WeightScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.monitor_weight, size: 80, color: Colors.grey[300]),
+                      Icon(Icons.monitor_weight,
+                          size: 80, color: scheme.onSurfaceVariant),
                       const SizedBox(height: 24),
                       Text(
-                        '暂无体重记录',
+                        l10n.weightEmpty,
                         style: TextStyle(
-                          fontSize: 18,
-                          color: Colors.grey[600],
+                          fontSize: 16,
+                          color: scheme.onSurfaceVariant,
                         ),
                       ),
                       const SizedBox(height: 16),
                       ElevatedButton.icon(
                         onPressed: () => _showAddWeightDialog(),
                         icon: const Icon(Icons.add),
-                        label: const Text('添加记录'),
+                        label: Text(l10n.actionAdd),
                       ),
                     ],
                   ),
@@ -99,10 +105,8 @@ class _WeightScreenState extends State<WeightScreen> {
                     physics: const AlwaysScrollableScrollPhysics(),
                     child: Column(
                       children: [
-                        // 体重趋势图表
-                        _buildTrendChart(),
-                        // 记录列表
-                        _buildRecordsList(),
+                        _buildTrendChart(l10n),
+                        _buildRecordsList(l10n),
                       ],
                     ),
                   ),
@@ -115,10 +119,12 @@ class _WeightScreenState extends State<WeightScreen> {
     );
   }
 
-  Widget _buildTrendChart() {
+  Widget _buildTrendChart(AppLocalizations l10n) {
     if (_records.length < 2) {
       return const SizedBox.shrink();
     }
+    final scheme = Theme.of(context).colorScheme;
+    final lineColor = scheme.primary;
 
     return Card(
       margin: const EdgeInsets.all(16),
@@ -128,26 +134,32 @@ class _WeightScreenState extends State<WeightScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '体重趋势',
-              style: Theme.of(context).textTheme.titleLarge,
+              l10n.weightTrendSection,
+              style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 16),
             SizedBox(
               height: 200,
               child: LineChart(
                 LineChartData(
-                  gridData: FlGridData(show: true),
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    getDrawingHorizontalLine: (_) => FlLine(
+                      color: scheme.outlineVariant,
+                      strokeWidth: 0.5,
+                    ),
+                  ),
                   titlesData: FlTitlesData(
                     leftTitles: AxisTitles(
                       sideTitles: SideTitles(
                         showTitles: true,
                         reservedSize: 40,
-                        getTitlesWidget: (value, meta) {
-                          return Text(
-                            value.toStringAsFixed(1),
-                            style: const TextStyle(fontSize: 10),
-                          );
-                        },
+                        getTitlesWidget: (value, meta) => Text(
+                          value.toStringAsFixed(1),
+                          style: TextStyle(
+                              fontSize: 10, color: scheme.onSurfaceVariant),
+                        ),
                       ),
                     ),
                     bottomTitles: AxisTitles(
@@ -159,7 +171,9 @@ class _WeightScreenState extends State<WeightScreen> {
                             final record = _records[index];
                             return Text(
                               '${record.measuredAt.month}/${record.measuredAt.day}',
-                              style: const TextStyle(fontSize: 10),
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  color: scheme.onSurfaceVariant),
                             );
                           }
                           return const Text('');
@@ -183,12 +197,12 @@ class _WeightScreenState extends State<WeightScreen> {
                         );
                       }).toList(),
                       isCurved: true,
-                      color: Colors.blue,
-                      barWidth: 3,
+                      color: lineColor,
+                      barWidth: 2.5,
                       dotData: FlDotData(show: true),
                       belowBarData: BarAreaData(
                         show: true,
-                        color: Colors.blue.withOpacity(0.1),
+                        color: lineColor.withValues(alpha: 0.12),
                       ),
                     ),
                   ],
@@ -196,31 +210,30 @@ class _WeightScreenState extends State<WeightScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            // 统计信息
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _buildStatItem(
-                  '最低',
+                  l10n.weightStatLow,
                   '${_records.map((r) => r.weight).reduce((a, b) => a < b ? a : b).toStringAsFixed(1)} kg',
                   Icons.arrow_downward,
-                  Colors.green,
+                  const Color(0xFF64B871),
                 ),
                 _buildStatItem(
-                  '最高',
+                  l10n.weightStatHigh,
                   '${_records.map((r) => r.weight).reduce((a, b) => a > b ? a : b).toStringAsFixed(1)} kg',
                   Icons.arrow_upward,
-                  Colors.red,
+                  scheme.error,
                 ),
                 _buildStatItem(
-                  '变化',
+                  l10n.weightStatChange,
                   '${(_records.last.weight - _records.first.weight).toStringAsFixed(1)} kg',
                   _records.last.weight < _records.first.weight
                       ? Icons.trending_down
                       : Icons.trending_up,
                   _records.last.weight < _records.first.weight
-                      ? Colors.green
-                      : Colors.orange,
+                      ? const Color(0xFF64B871)
+                      : const Color(0xFFE38B2A),
                 ),
               ],
             ),
@@ -231,31 +244,33 @@ class _WeightScreenState extends State<WeightScreen> {
   }
 
   Widget _buildStatItem(String label, String value, IconData icon, Color color) {
+    final scheme = Theme.of(context).colorScheme;
     return Column(
       children: [
         Icon(icon, color: color, size: 20),
         const SizedBox(height: 4),
         Text(
           value,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
         ),
         Text(
           label,
-          style: TextStyle(color: Colors.grey[600], fontSize: 12),
+          style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 11),
         ),
       ],
     );
   }
 
-  Widget _buildRecordsList() {
+  Widget _buildRecordsList(AppLocalizations l10n) {
+    final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '历史记录',
-            style: Theme.of(context).textTheme.titleLarge,
+            l10n.weightHistorySection,
+            style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 12),
           ListView.builder(
@@ -273,26 +288,28 @@ class _WeightScreenState extends State<WeightScreen> {
                   padding: const EdgeInsets.only(right: 24),
                   margin: const EdgeInsets.only(bottom: 8),
                   decoration: BoxDecoration(
-                    color: Colors.red,
+                    color: scheme.error,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.delete, color: Colors.white),
+                  child: Icon(Icons.delete, color: scheme.onError),
                 ),
                 child: Card(
                   margin: const EdgeInsets.only(bottom: 8),
                   child: ListTile(
                     leading: CircleAvatar(
-                      backgroundColor: Colors.blue[100],
-                      child: Icon(Icons.monitor_weight, color: Colors.blue[800]),
+                      backgroundColor: const Color(0xFF5B9BD5).withValues(alpha: 0.18),
+                      child: const Icon(Icons.monitor_weight,
+                          color: Color(0xFF5B9BD5)),
                     ),
                     title: Text('${record.weight.toStringAsFixed(1)} kg'),
                     subtitle: Text(
                       '${record.measuredAt.year}-${record.measuredAt.month.toString().padLeft(2, '0')}-${record.measuredAt.day.toString().padLeft(2, '0')}',
+                      style: TextStyle(color: scheme.onSurfaceVariant),
                     ),
                     trailing: record.note.isNotEmpty
                         ? Text(
                             record.note,
-                            style: TextStyle(color: Colors.grey[600]),
+                            style: TextStyle(color: scheme.onSurfaceVariant),
                           )
                         : null,
                     onTap: () => _showEditWeightDialog(record),
@@ -307,10 +324,11 @@ class _WeightScreenState extends State<WeightScreen> {
   }
 
   Future<void> _showAddWeightDialog() async {
+    final l10n = AppLocalizations.of(context);
     final user = context.read<UserProvider>().currentUser;
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先登录')),
+        SnackBar(content: Text(l10n.toastPleaseSignIn)),
       );
       return;
     }
@@ -345,18 +363,18 @@ class _WeightScreenState extends State<WeightScreen> {
   }
 
   Future<bool> _confirmAndDelete(WeightRecord r) async {
+    final l10n = AppLocalizations.of(context);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('删除这条体重记录？'),
+        title: Text(l10n.weightDeleteTitle),
         content: Text('${r.weight.toStringAsFixed(1)} kg · '
             '${r.measuredAt.year}-${r.measuredAt.month.toString().padLeft(2, "0")}-${r.measuredAt.day.toString().padLeft(2, "0")}'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l10n.actionCancel)),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
+            child: Text(l10n.actionDelete),
           ),
         ],
       ),
@@ -369,7 +387,7 @@ class _WeightScreenState extends State<WeightScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('删除失败：$e')),
+          SnackBar(content: Text(l10n.errorDeleteFailed(e.toString()))),
         );
       }
       return false;
@@ -378,7 +396,7 @@ class _WeightScreenState extends State<WeightScreen> {
 }
 
 // ============================================================================
-//  添加体重 BottomSheet（支持 AI 文本解析）
+//  Add/Edit BottomSheet
 // ============================================================================
 
 class _AddWeightSheet extends StatefulWidget {
@@ -454,10 +472,11 @@ class _AddWeightSheetState extends State<_AddWeightSheet> {
   }
 
   Future<void> _aiParse() async {
+    final l10n = AppLocalizations.of(context);
     final text = _descCtrl.text.trim();
     if (text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('随便写，比如 "68.5kg 早"、"67 体脂22"')),
+        SnackBar(content: Text(l10n.weightAiEmptyWarn)),
       );
       return;
     }
@@ -468,7 +487,7 @@ class _AddWeightSheetState extends State<_AddWeightSheet> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('解析失败：$e')),
+          SnackBar(content: Text(l10n.errorParseFailed(e.toString()))),
         );
       }
     } finally {
@@ -487,10 +506,11 @@ class _AddWeightSheetState extends State<_AddWeightSheet> {
   }
 
   Future<void> _submit() async {
+    final l10n = AppLocalizations.of(context);
     final w = double.tryParse(_weightCtrl.text.trim()) ?? 0;
     if (w <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入体重（或让 AI 帮你解析）')),
+        SnackBar(content: Text(l10n.weightValueRequired)),
       );
       return;
     }
@@ -525,13 +545,13 @@ class _AddWeightSheetState extends State<_AddWeightSheet> {
       if (mounted) {
         Navigator.pop(context, true);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(widget.prefill == null ? '体重已记录' : '已更新')),
+          SnackBar(content: Text(widget.prefill == null ? l10n.toastLogged : l10n.toastUpdated)),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('保存失败：$e')),
+          SnackBar(content: Text(l10n.errorSaveFailed(e.toString()))),
         );
       }
     } finally {
@@ -542,6 +562,8 @@ class _AddWeightSheetState extends State<_AddWeightSheet> {
   @override
   Widget build(BuildContext context) {
     final insets = MediaQuery.of(context).viewInsets;
+    final scheme = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
     return Padding(
       padding: EdgeInsets.only(bottom: insets.bottom),
       child: DraggableScrollableSheet(
@@ -550,9 +572,9 @@ class _AddWeightSheetState extends State<_AddWeightSheet> {
         maxChildSize: 0.95,
         expand: false,
         builder: (ctx, scroll) => Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: Column(
             children: [
@@ -560,7 +582,7 @@ class _AddWeightSheetState extends State<_AddWeightSheet> {
                 margin: const EdgeInsets.only(top: 10, bottom: 6),
                 height: 4, width: 40,
                 decoration: BoxDecoration(
-                  color: Colors.grey[300],
+                  color: scheme.outlineVariant,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -568,15 +590,15 @@ class _AddWeightSheetState extends State<_AddWeightSheet> {
                 child: ListView(
                   controller: scroll,
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-                  children: _buildFields(),
+                  children: _buildFields(l10n),
                 ),
               ),
               SafeArea(
                 child: Container(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border(top: BorderSide(color: Colors.grey[200]!)),
+                    color: scheme.surface,
+                    border: Border(top: BorderSide(color: scheme.outlineVariant)),
                   ),
                   child: SizedBox(
                     width: double.infinity, height: 48,
@@ -586,7 +608,7 @@ class _AddWeightSheetState extends State<_AddWeightSheet> {
                           ? const SizedBox(width: 20, height: 20,
                               child: CircularProgressIndicator(
                                   strokeWidth: 2, color: Colors.white))
-                          : const Text('保存'),
+                          : Text(l10n.actionSave),
                     ),
                   ),
                 ),
@@ -598,10 +620,10 @@ class _AddWeightSheetState extends State<_AddWeightSheet> {
     );
   }
 
-  List<Widget> _buildFields() {
+  List<Widget> _buildFields(AppLocalizations l10n) {
+    final scheme = Theme.of(context).colorScheme;
     InputDecoration deco(String label) => InputDecoration(
           labelText: label,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         );
@@ -610,27 +632,20 @@ class _AddWeightSheetState extends State<_AddWeightSheet> {
 
     return [
       Row(children: [
-        Text(widget.prefill == null ? '添加体重记录' : '编辑体重记录',
+        Text(widget.prefill == null ? l10n.weightLogSheetTitle : l10n.weightEditSheetTitle,
             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
         const Spacer(),
         IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
       ]),
       const SizedBox(height: 8),
 
-      Text('让 AI 帮你算',
-          style: TextStyle(fontSize: 13, color: Colors.grey[700], fontWeight: FontWeight.w600)),
-      const SizedBox(height: 8),
+      _sectionTitle(l10n.foodSectionAiEstimate, scheme),
+      const SizedBox(height: 4),
       Row(children: [
         Expanded(child: TextField(
           controller: _descCtrl,
           decoration: InputDecoration(
-            hintText: '例：68.5kg 早、67 体脂22%',
-            filled: true, fillColor: Colors.grey[100],
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            hintText: l10n.weightAiHint,
           ),
           textInputAction: TextInputAction.done,
           onSubmitted: (_) => _aiParse(),
@@ -641,7 +656,7 @@ class _AddWeightSheetState extends State<_AddWeightSheet> {
           child: _aiLoading
               ? const SizedBox(width: 16, height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text('解析'),
+              : Text(l10n.actionParse),
         ),
         VoiceInputButton(
           targetController: _descCtrl,
@@ -650,12 +665,11 @@ class _AddWeightSheetState extends State<_AddWeightSheet> {
       ]),
 
       const SizedBox(height: 20),
-      Text('详细信息',
-          style: TextStyle(fontSize: 13, color: Colors.grey[700], fontWeight: FontWeight.w600)),
-      const SizedBox(height: 8),
+      _sectionTitle(l10n.foodSectionDetails, scheme),
+      const SizedBox(height: 4),
       TextField(
         controller: _weightCtrl,
-        decoration: deco('体重 (kg) *'),
+        decoration: deco(l10n.weightValueKg),
         keyboardType: decimalKb,
         inputFormatters: numFmt,
       ),
@@ -664,9 +678,8 @@ class _AddWeightSheetState extends State<_AddWeightSheet> {
       OutlinedButton.icon(
         onPressed: _pickDate,
         icon: const Icon(Icons.calendar_today),
-        label: Text('测量日期：${_measuredAt.year}-'
-            '${_measuredAt.month.toString().padLeft(2, "0")}-'
-            '${_measuredAt.day.toString().padLeft(2, "0")}'),
+        label: Text(l10n.weightMeasuredOn(
+            '${_measuredAt.year}-${_measuredAt.month.toString().padLeft(2, "0")}-${_measuredAt.day.toString().padLeft(2, "0")}')),
         style: OutlinedButton.styleFrom(
           padding: const EdgeInsets.symmetric(vertical: 14),
           minimumSize: const Size.fromHeight(48),
@@ -681,10 +694,10 @@ class _AddWeightSheetState extends State<_AddWeightSheet> {
           child: Row(
             children: [
               Icon(_showMore ? Icons.expand_less : Icons.expand_more,
-                  size: 20, color: Colors.grey[700]),
+                  size: 20, color: scheme.onSurfaceVariant),
               const SizedBox(width: 4),
-              Text('更多（体脂 / 肌肉 / 水分 / 备注，可选）',
-                  style: TextStyle(color: Colors.grey[700])),
+              Text(l10n.weightMoreLabel,
+                  style: TextStyle(color: scheme.onSurfaceVariant)),
             ],
           ),
         ),
@@ -693,21 +706,21 @@ class _AddWeightSheetState extends State<_AddWeightSheet> {
         Row(children: [
           Expanded(child: TextField(
             controller: _bodyFatCtrl,
-            decoration: deco('体脂率 (%)'),
+            decoration: deco(l10n.weightBodyFatPct),
             keyboardType: decimalKb,
             inputFormatters: numFmt,
           )),
           const SizedBox(width: 8),
           Expanded(child: TextField(
             controller: _muscleCtrl,
-            decoration: deco('肌肉 (kg)'),
+            decoration: deco(l10n.weightMuscleKg),
             keyboardType: decimalKb,
             inputFormatters: numFmt,
           )),
           const SizedBox(width: 8),
           Expanded(child: TextField(
             controller: _waterCtrl,
-            decoration: deco('水分 (%)'),
+            decoration: deco(l10n.weightWaterPct),
             keyboardType: decimalKb,
             inputFormatters: numFmt,
           )),
@@ -715,9 +728,16 @@ class _AddWeightSheetState extends State<_AddWeightSheet> {
         const SizedBox(height: 12),
         TextField(
           controller: _noteCtrl,
-          decoration: deco('备注'),
+          decoration: deco(l10n.weightNote),
         ),
       ],
     ];
   }
+
+  Widget _sectionTitle(String t, ColorScheme scheme) => Text(t,
+      style: TextStyle(
+          fontSize: 11,
+          letterSpacing: 0.8,
+          color: scheme.onSurfaceVariant,
+          fontWeight: FontWeight.w600));
 }

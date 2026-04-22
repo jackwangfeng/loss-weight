@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import '../l10n/generated/app_localizations.dart';
 import '../providers/user_provider.dart';
 import '../services/exercise_service.dart';
 import '../services/ai_service.dart';
 import '../models/exercise_record.dart';
+import '../utils/labels.dart';
 import '../widgets/voice_input_button.dart';
 
 class ExerciseScreen extends StatefulWidget {
@@ -28,6 +30,8 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
+    final l10n = AppLocalizations.of(context);
     setState(() => _loading = true);
     try {
       final user = context.read<UserProvider>().currentUser;
@@ -35,7 +39,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
         _records = await _svc.getRecords(userId: user.id);
       }
     } catch (e) {
-      _toast('加载失败：$e');
+      _toast(l10n.errorLoadFailed(e.toString()));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -77,10 +81,11 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: widget.showAppBar
           ? AppBar(
-              title: const Text('运动记录'),
+              title: Text(l10n.trainingTitle),
               actions: [
                 IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
               ],
@@ -96,7 +101,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
         heroTag: 'exercise_fab',
         onPressed: () => _openAddSheet(),
         icon: const Icon(Icons.add),
-        label: const Text('记录'),
+        label: Text(l10n.actionLog),
       ),
     );
   }
@@ -111,7 +116,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
       children: [
         _TodayCard(records: today),
         const SizedBox(height: 16),
-        if (_records.isEmpty) _buildEmpty(),
+        if (_records.isEmpty) _buildEmpty(context),
         for (final d in days) _DayGroup(
           day: d,
           records: groups[d]!,
@@ -123,17 +128,17 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   }
 
   Future<bool> _confirmAndDelete(ExerciseRecord r) async {
+    final l10n = AppLocalizations.of(context);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('删除这条运动记录？'),
-        content: Text('${r.type} · ${r.durationMin} 分钟 · ${r.caloriesBurned.toStringAsFixed(0)} kcal'),
+        title: Text(l10n.trainingDeleteTitle),
+        content: Text('${r.type} · ${r.durationMin} min · ${r.caloriesBurned.toStringAsFixed(0)} kcal'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l10n.actionCancel)),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
+            child: Text(l10n.actionDelete),
           ),
         ],
       ),
@@ -144,26 +149,31 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
       await _load();
       return true;
     } catch (e) {
-      _toast('删除失败：$e');
+      _toast(l10n.errorDeleteFailed(e.toString()));
       return false;
     }
   }
 
-  Widget _buildEmpty() => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 40),
-        child: Column(
-          children: [
-            Icon(Icons.directions_run, size: 64, color: Colors.grey[300]),
-            const SizedBox(height: 16),
-            Text('还没有运动记录，点右下角开始',
-                style: TextStyle(color: Colors.grey[600])),
-          ],
-        ),
-      );
+  Widget _buildEmpty(BuildContext ctx) {
+    final scheme = Theme.of(ctx).colorScheme;
+    final l10n = AppLocalizations.of(ctx);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 40),
+      child: Column(
+        children: [
+          Icon(Icons.fitness_center, size: 64, color: scheme.onSurfaceVariant),
+          const SizedBox(height: 16),
+          Text(l10n.trainingEmpty,
+              style: TextStyle(color: scheme.onSurfaceVariant)),
+        ],
+      ),
+    );
+  }
 
   Future<void> _openAddSheet({ExerciseRecord? prefill}) async {
+    final l10n = AppLocalizations.of(context);
     final user = context.read<UserProvider>().currentUser;
-    if (user == null) return _toast('请先登录');
+    if (user == null) return _toast(l10n.toastPleaseSignIn);
     final created = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -184,13 +194,14 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
 
   void _showBurnedToast() {
     if (!mounted) return;
+    final l10n = AppLocalizations.of(context);
     final today = _today();
     if (today.isEmpty) return;
     final cal = today.fold<double>(0, (s, r) => s + r.caloriesBurned);
     final minutes = today.fold<int>(0, (s, r) => s + r.durationMin);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('今日共消耗 ${cal.toStringAsFixed(0)} kcal / $minutes 分钟'),
+        content: Text(l10n.trainingBurnedToast(cal.toStringAsFixed(0), minutes)),
         duration: const Duration(seconds: 3),
       ),
     );
@@ -198,7 +209,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
 }
 
 // ============================================================================
-//  今日消耗卡片
+//  Today's burn card
 // ============================================================================
 
 class _TodayCard extends StatelessWidget {
@@ -206,11 +217,11 @@ class _TodayCard extends StatelessWidget {
   const _TodayCard({required this.records});
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
     final double cal = records.fold(0.0, (s, r) => s + r.caloriesBurned);
     final int minutes = records.fold(0, (s, r) => s + r.durationMin);
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -219,28 +230,33 @@ class _TodayCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('今日消耗',
-                    style: TextStyle(fontSize: 14, color: Colors.grey)),
-                Text('${records.length} 次',
-                    style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                Text(l10n.trainingTodayLabel,
+                    style: TextStyle(
+                        fontSize: 11,
+                        letterSpacing: 0.8,
+                        color: scheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600)),
+                Text(l10n.trainingSessionCount(records.length),
+                    style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Row(
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
               children: [
                 Text(cal.toStringAsFixed(0),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 36,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black87,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.8,
+                      color: scheme.onSurface,
                     )),
-                const Text(' kcal',
-                    style: TextStyle(fontSize: 14, color: Colors.grey)),
+                Text(' kcal',
+                    style: TextStyle(fontSize: 14, color: scheme.onSurfaceVariant)),
                 const Spacer(),
-                Text('$minutes 分钟',
-                    style: const TextStyle(fontSize: 14, color: Colors.grey)),
+                Text(l10n.trainingDurationMinutes(minutes),
+                    style: TextStyle(fontSize: 14, color: scheme.onSurfaceVariant)),
               ],
             ),
           ],
@@ -251,7 +267,7 @@ class _TodayCard extends StatelessWidget {
 }
 
 // ============================================================================
-//  按日分组卡片
+//  Day group card
 // ============================================================================
 
 class _DayGroup extends StatelessWidget {
@@ -266,37 +282,47 @@ class _DayGroup extends StatelessWidget {
     this.onDelete,
   });
 
-  String _label(DateTime d) {
+  String _label(AppLocalizations l10n, DateTime d) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final diff = today.difference(d).inDays;
-    if (diff == 0) return '今天';
-    if (diff == 1) return '昨天';
-    if (diff < 7) return '$diff 天前';
+    if (diff == 0) return l10n.timeToday;
+    if (diff == 1) return l10n.timeYesterdayCap;
+    if (diff < 7) return l10n.timeDaysAgo(diff);
     return '${d.month}/${d.day}';
   }
 
   IconData _typeIcon(String type) {
-    if (type.contains('跑') || type.contains('走')) return Icons.directions_run;
-    if (type.contains('游')) return Icons.pool;
-    if (type.contains('骑')) return Icons.directions_bike;
-    if (type.contains('瑜伽') || type.contains('拉伸')) return Icons.self_improvement;
-    if (type.contains('力量') || type.contains('训练')) return Icons.fitness_center;
-    if (type.contains('球')) return Icons.sports_tennis;
+    final lower = type.toLowerCase();
+    if (lower.contains('run') || lower.contains('walk') ||
+        type.contains('跑') || type.contains('走')) return Icons.directions_run;
+    if (lower.contains('swim') || type.contains('游')) return Icons.pool;
+    if (lower.contains('cycle') || lower.contains('bike') ||
+        type.contains('骑')) return Icons.directions_bike;
+    if (lower.contains('yoga') || lower.contains('stretch') ||
+        type.contains('瑜伽') || type.contains('拉伸')) return Icons.self_improvement;
+    if (lower.contains('lift') || lower.contains('press') ||
+        lower.contains('squat') || lower.contains('deadlift') ||
+        lower.contains('strength') || type.contains('力量') ||
+        type.contains('训练')) return Icons.fitness_center;
+    if (lower.contains('tennis') || lower.contains('ball') ||
+        type.contains('球')) return Icons.sports_tennis;
     return Icons.sports;
   }
 
   Color _intensityColor(String intensity) {
     switch (intensity) {
-      case 'low':    return Colors.green;
-      case 'medium': return Colors.orange;
-      case 'high':   return Colors.red;
-      default:       return Colors.blueGrey;
+      case 'low':    return const Color(0xFF64B871);
+      case 'medium': return const Color(0xFFE38B2A);
+      case 'high':   return const Color(0xFFE53935);
+      default:       return const Color(0xFF8A8A90);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
     final total = records.fold<double>(0, (s, r) => s + r.caloriesBurned);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -305,11 +331,11 @@ class _DayGroup extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
           child: Row(
             children: [
-              Text(_label(day),
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              Text(_label(l10n, day),
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
               const Spacer(),
               Text('${total.toStringAsFixed(0)} kcal',
-                  style: const TextStyle(color: Colors.grey, fontSize: 14)),
+                  style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13)),
             ],
           ),
         ),
@@ -325,18 +351,18 @@ class _DayGroup extends StatelessWidget {
               padding: const EdgeInsets.only(right: 24),
               margin: const EdgeInsets.only(bottom: 8),
               decoration: BoxDecoration(
-                color: Colors.red,
+                color: scheme.error,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.delete, color: Colors.white),
+              child: Icon(Icons.delete, color: scheme.onError),
             ),
             child: Card(
               margin: const EdgeInsets.only(bottom: 8),
               child: ListTile(
                 onTap: onTap == null ? null : () => onTap!(r),
                 leading: CircleAvatar(
-                  backgroundColor: _intensityColor(r.intensity),
-                  child: Icon(_typeIcon(r.type), color: Colors.white),
+                  backgroundColor: _intensityColor(r.intensity).withValues(alpha: 0.18),
+                  child: Icon(_typeIcon(r.type), color: _intensityColor(r.intensity)),
                 ),
                 title: Row(
                   children: [
@@ -344,17 +370,17 @@ class _DayGroup extends StatelessWidget {
                     if (r.distance > 0) ...[
                       const SizedBox(width: 6),
                       Text('· ${r.distance.toStringAsFixed(1)} km',
-                          style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                          style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13)),
                     ],
                   ],
                 ),
                 subtitle: Text(
-                    '${r.durationMin} 分钟 · ${r.caloriesBurned.toStringAsFixed(0)} kcal'
-                    '${r.intensityLabel.isNotEmpty ? "  ${r.intensityLabel}" : ""}'),
+                    '${r.durationMin} min · ${r.caloriesBurned.toStringAsFixed(0)} kcal'
+                    '${intensityLabel(l10n, r.intensity).isNotEmpty ? "  ${intensityLabel(l10n, r.intensity)}" : ""}'),
                 trailing: Text(
                     '${r.exercisedAt.hour.toString().padLeft(2, '0')}:'
                     '${r.exercisedAt.minute.toString().padLeft(2, '0')}',
-                    style: TextStyle(color: Colors.grey[600])),
+                    style: TextStyle(color: scheme.onSurfaceVariant)),
               ),
             ),
           ),
@@ -364,7 +390,7 @@ class _DayGroup extends StatelessWidget {
 }
 
 // ============================================================================
-//  添加运动 BottomSheet
+//  Add/Edit BottomSheet
 // ============================================================================
 
 class _AddExerciseSheet extends StatefulWidget {
@@ -437,10 +463,11 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
   }
 
   Future<void> _estimate() async {
+    final l10n = AppLocalizations.of(context);
     final text = _descCtrl.text.trim();
     if (text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('先描述一下运动，如 "跑步 5 公里 30 分钟"')),
+        SnackBar(content: Text(l10n.trainingAiEmptyWarn)),
       );
       return;
     }
@@ -451,7 +478,7 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('估算失败：$e')),
+          SnackBar(content: Text(l10n.errorEstimateFailed(e.toString()))),
         );
       }
     } finally {
@@ -479,10 +506,11 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
   }
 
   Future<void> _submit() async {
+    final l10n = AppLocalizations.of(context);
     final type = _typeCtrl.text.trim();
     final dur = int.tryParse(_durationCtrl.text.trim()) ?? 0;
-    if (type.isEmpty) return _warn('请输入运动类型');
-    if (dur <= 0) return _warn('请输入时长');
+    if (type.isEmpty) return _warn(l10n.trainingTypeRequired);
+    if (dur <= 0) return _warn(l10n.trainingDurationRequired);
 
     setState(() => _submitting = true);
     try {
@@ -514,11 +542,11 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
       if (mounted) {
         Navigator.pop(context, true);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(widget.prefill == null ? '运动记录已保存' : '已更新')),
+          SnackBar(content: Text(widget.prefill == null ? l10n.toastLogged : l10n.toastUpdated)),
         );
       }
     } catch (e) {
-      _warn('保存失败：$e');
+      _warn(l10n.errorSaveFailed(e.toString()));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -532,6 +560,8 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
   @override
   Widget build(BuildContext context) {
     final insets = MediaQuery.of(context).viewInsets;
+    final scheme = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
     return Padding(
       padding: EdgeInsets.only(bottom: insets.bottom),
       child: DraggableScrollableSheet(
@@ -540,9 +570,9 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
         maxChildSize: 0.95,
         expand: false,
         builder: (ctx, scroll) => Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: Column(
             children: [
@@ -550,7 +580,7 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
                 margin: const EdgeInsets.only(top: 10, bottom: 6),
                 height: 4, width: 40,
                 decoration: BoxDecoration(
-                  color: Colors.grey[300],
+                  color: scheme.outlineVariant,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -558,15 +588,15 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
                 child: ListView(
                   controller: scroll,
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-                  children: _buildFields(),
+                  children: _buildFields(l10n),
                 ),
               ),
               SafeArea(
                 child: Container(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border(top: BorderSide(color: Colors.grey[200]!)),
+                    color: scheme.surface,
+                    border: Border(top: BorderSide(color: scheme.outlineVariant)),
                   ),
                   child: SizedBox(
                     width: double.infinity, height: 48,
@@ -576,7 +606,7 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
                           ? const SizedBox(width: 20, height: 20,
                               child: CircularProgressIndicator(
                                   strokeWidth: 2, color: Colors.white))
-                          : const Text('保存'),
+                          : Text(l10n.actionSave),
                     ),
                   ),
                 ),
@@ -588,40 +618,31 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
     );
   }
 
-  List<Widget> _buildFields() {
+  List<Widget> _buildFields(AppLocalizations l10n) {
     InputDecoration deco(String label) => InputDecoration(
           labelText: label,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         );
     final numFmt = [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))];
     final intFmt = [FilteringTextInputFormatter.digitsOnly];
     final decimalKb = const TextInputType.numberWithOptions(decimal: true);
-    final intKb = TextInputType.number;
+    const intKb = TextInputType.number;
 
     return [
       Row(children: [
-        Text(widget.prefill == null ? '添加运动记录' : '编辑运动记录',
+        Text(widget.prefill == null ? l10n.trainingLogSheetTitle : l10n.trainingEditSheetTitle,
             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
         const Spacer(),
         IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
       ]),
       const SizedBox(height: 8),
 
-      Text('让 AI 帮你算',
-          style: TextStyle(fontSize: 13, color: Colors.grey[700], fontWeight: FontWeight.w600)),
-      const SizedBox(height: 8),
+      _sectionTitle(l10n.foodSectionAiEstimate),
       Row(children: [
         Expanded(child: TextField(
           controller: _descCtrl,
           decoration: InputDecoration(
-            hintText: '例：跑步 5 公里 30 分钟',
-            filled: true, fillColor: Colors.grey[100],
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            hintText: l10n.trainingAiHint,
           ),
           textInputAction: TextInputAction.done,
           onSubmitted: (_) => _estimate(),
@@ -632,7 +653,7 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
           child: _aiLoading
               ? const SizedBox(width: 16, height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text('估算'),
+              : Text(l10n.actionEstimate),
         ),
         VoiceInputButton(
           targetController: _descCtrl,
@@ -642,9 +663,8 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
 
       if (widget.frequentTypes.isNotEmpty) ...[
         const SizedBox(height: 16),
-        Text('常做',
-            style: TextStyle(fontSize: 13, color: Colors.grey[700], fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
+        _sectionTitle(l10n.trainingSectionFrequent),
+        const SizedBox(height: 4),
         Wrap(
           spacing: 8,
           runSpacing: 4,
@@ -665,25 +685,24 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
       ],
 
       const SizedBox(height: 20),
-      Text('详细信息',
-          style: TextStyle(fontSize: 13, color: Colors.grey[700], fontWeight: FontWeight.w600)),
-      const SizedBox(height: 8),
+      _sectionTitle(l10n.foodSectionDetails),
+      const SizedBox(height: 4),
       TextField(
         controller: _typeCtrl,
-        decoration: deco('运动类型 *（跑步/游泳/瑜伽…）'),
+        decoration: deco(l10n.trainingType).copyWith(hintText: l10n.trainingTypeHint),
       ),
       const SizedBox(height: 12),
       Row(children: [
         Expanded(child: TextField(
           controller: _durationCtrl,
-          decoration: deco('时长 (分钟) *'),
+          decoration: deco(l10n.trainingDurationMin),
           keyboardType: intKb,
           inputFormatters: intFmt,
         )),
         const SizedBox(width: 12),
         Expanded(child: TextField(
           controller: _caloriesCtrl,
-          decoration: deco('消耗 (kcal)'),
+          decoration: deco(l10n.trainingCaloriesBurned),
           keyboardType: decimalKb,
           inputFormatters: numFmt,
         )),
@@ -692,18 +711,18 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
       Row(children: [
         Expanded(child: DropdownButtonFormField<String>(
           initialValue: _intensity,
-          decoration: deco('强度'),
-          items: const [
-            DropdownMenuItem(value: 'low',    child: Text('轻度')),
-            DropdownMenuItem(value: 'medium', child: Text('中等')),
-            DropdownMenuItem(value: 'high',   child: Text('高强度')),
+          decoration: deco(l10n.trainingIntensity),
+          items: [
+            DropdownMenuItem(value: 'low',    child: Text(l10n.intensityLight)),
+            DropdownMenuItem(value: 'medium', child: Text(l10n.intensityModerate)),
+            DropdownMenuItem(value: 'high',   child: Text(l10n.intensityHard)),
           ],
           onChanged: (v) => setState(() => _intensity = v ?? 'medium'),
         )),
         const SizedBox(width: 12),
         Expanded(child: TextField(
           controller: _distanceCtrl,
-          decoration: deco('距离 (km)'),
+          decoration: deco(l10n.trainingDistanceKm),
           keyboardType: decimalKb,
           inputFormatters: numFmt,
         )),
@@ -723,8 +742,18 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
       const SizedBox(height: 12),
       TextField(
         controller: _notesCtrl,
-        decoration: deco('备注（可选）'),
+        decoration: deco(l10n.trainingNotes),
       ),
     ];
   }
+
+  Widget _sectionTitle(String t) => Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: Text(t,
+            style: TextStyle(
+                fontSize: 11,
+                letterSpacing: 0.8,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600)),
+      );
 }

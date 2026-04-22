@@ -81,20 +81,6 @@ class FoodRecord {
     return unit.isEmpty ? n : '$n$unit';
   }
 
-  String get mealTypeLabel {
-    switch (mealType) {
-      case 'breakfast':
-        return '早餐';
-      case 'lunch':
-        return '午餐';
-      case 'dinner':
-        return '晚餐';
-      case 'snack':
-        return '加餐';
-      default:
-        return '其他';
-    }
-  }
 }
 
 class DailyFoodSummary {

@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import '../l10n/generated/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/user_provider.dart';
 import '../models/user_profile.dart';
+import '../utils/labels.dart';
 import 'login_screen.dart';
-import 'ai_memory_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final authProvider = context.watch<AuthProvider>();
     final userProvider = context.watch<UserProvider>();
     final isLoggedIn = authProvider.isLoggedIn;
@@ -19,18 +21,18 @@ class ProfileScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('我的'),
+        title: Text(l10n.profileTitle),
         actions: [
           if (isLoggedIn)
             IconButton(
               icon: const Icon(Icons.logout),
-              tooltip: '退出登录',
+              tooltip: l10n.actionSignOut,
               onPressed: () async {
                 await authProvider.logout();
                 if (context.mounted) {
                   userProvider.clearUser();
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('已退出登录')),
+                    SnackBar(content: Text(l10n.toastSignedOut)),
                   );
                 }
               },
@@ -41,34 +43,38 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildLoggedOut(BuildContext context) => Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.person_outline, size: 80, color: Colors.grey),
-            const SizedBox(height: 24),
-            const Text('未登录', style: TextStyle(fontSize: 18)),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: () async {
-                final result = await Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+  Widget _buildLoggedOut(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.person_outline, size: 80),
+          const SizedBox(height: 24),
+          Text(l10n.profileNotSignedIn, style: const TextStyle(fontSize: 18)),
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            onPressed: () async {
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+              );
+              if (result == true && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(l10n.toastWelcomeBack)),
                 );
-                if (result == true && context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('欢迎回来！')),
-                  );
-                }
-              },
-              icon: const Icon(Icons.login),
-              label: const Text('登录/注册'),
-            ),
-          ],
-        ),
-      );
+              }
+            },
+            icon: const Icon(Icons.login),
+            label: Text(l10n.actionSignInSignUp),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildProfile(BuildContext context, UserProfile? user) {
+    final l10n = AppLocalizations.of(context);
     final nickname = (user?.nickname ?? '').trim();
     final initial = nickname.isEmpty ? 'U' : nickname.characters.first.toUpperCase();
 
@@ -82,33 +88,20 @@ class ProfileScreen extends StatelessWidget {
         Card(
           child: Column(
             children: [
-              _InfoTile(label: '身高', value: user == null || user.height <= 0 ? '—' : '${user.height.toStringAsFixed(0)} cm'),
+              _InfoTile(label: l10n.profileHeight, value: user == null || user.height <= 0 ? '—' : '${user.height.toStringAsFixed(0)} cm'),
               _divider(),
-              _InfoTile(label: '性别', value: _genderLabel(user?.gender)),
+              _InfoTile(label: l10n.profileSex, value: genderLabel(l10n, user?.gender)),
               _divider(),
-              _InfoTile(label: '生日', value: user?.birthday == null
+              _InfoTile(label: l10n.profileBirthday, value: user?.birthday == null
                   ? '—'
                   : '${user!.birthday!.year}-${user.birthday!.month.toString().padLeft(2, '0')}-${user.birthday!.day.toString().padLeft(2, '0')}'),
               _divider(),
-              _InfoTile(label: '活动水平', value: _activityLabel(user?.activityLevel ?? 1)),
+              _InfoTile(label: l10n.profileActivity, value: activityLevelLabel(l10n, user?.activityLevel ?? 1)),
               _divider(),
-              _InfoTile(label: '每日目标热量', value: user == null || user.targetCalorie <= 0
+              _InfoTile(label: l10n.profileDailyCalorieTarget, value: user == null || user.targetCalorie <= 0
                   ? '—'
                   : '${user.targetCalorie.toStringAsFixed(0)} kcal'),
             ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        Card(
-          child: ListTile(
-            leading: Icon(Icons.auto_awesome, color: Colors.green[700]),
-            title: const Text('AI 眼中的我'),
-            subtitle: const Text('查看/管理 AI 从对话里记住的事实'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const AIMemoryScreen()),
-            ),
           ),
         ),
         const SizedBox(height: 16),
@@ -117,7 +110,7 @@ class ProfileScreen extends StatelessWidget {
           child: FilledButton.icon(
             onPressed: user == null ? null : () => _openEdit(context, user),
             icon: const Icon(Icons.edit),
-            label: const Text('编辑资料'),
+            label: Text(l10n.actionEdit),
           ),
         ),
       ],
@@ -125,26 +118,6 @@ class ProfileScreen extends StatelessWidget {
   }
 
   Widget _divider() => const Divider(height: 1, indent: 16, endIndent: 16);
-
-  String _genderLabel(String? g) {
-    switch (g) {
-      case 'male':   return '男';
-      case 'female': return '女';
-      case 'other':  return '其他';
-      default:       return '—';
-    }
-  }
-
-  String _activityLabel(int lvl) {
-    switch (lvl) {
-      case 1: return '久坐（几乎不运动）';
-      case 2: return '轻度（每周 1-2 次）';
-      case 3: return '中度（每周 3-4 次）';
-      case 4: return '高度（每周 5-6 次）';
-      case 5: return '极高（每天训练）';
-      default: return '—';
-    }
-  }
 
   Future<void> _openEdit(BuildContext context, UserProfile user) async {
     await showModalBottomSheet(
@@ -162,7 +135,9 @@ class _HeaderCard extends StatelessWidget {
   const _HeaderCard({required this.user, required this.initial});
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final authProvider = context.watch<AuthProvider>();
+    final scheme = Theme.of(context).colorScheme;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -170,24 +145,24 @@ class _HeaderCard extends StatelessWidget {
           children: [
             CircleAvatar(
               radius: 40,
-              backgroundColor: Colors.green[100],
+              backgroundColor: scheme.surfaceContainerHighest,
               child: Text(
                 initial,
                 style: TextStyle(
                   fontSize: 32,
-                  color: Colors.green[800],
-                  fontWeight: FontWeight.bold,
+                  color: scheme.onSurface,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
             const SizedBox(height: 12),
             Text(
-              (user?.nickname.trim().isNotEmpty ?? false) ? user!.nickname : '未设置昵称',
+              (user?.nickname.trim().isNotEmpty ?? false) ? user!.nickname : l10n.profileNoNickname,
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 4),
             Text('ID: ${authProvider.userId ?? '-'}',
-                style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
           ],
         ),
       ),
@@ -200,42 +175,46 @@ class _StatsRow extends StatelessWidget {
   const _StatsRow({required this.user});
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final u = user;
-    String kg(double v) => v <= 0 ? '—' : '${v.toStringAsFixed(1)}';
+    String kg(double v) => v <= 0 ? '—' : v.toStringAsFixed(1);
     final bmi = u == null || u.bmi <= 0 ? '—' : u.bmi.toStringAsFixed(1);
     return Row(
       children: [
-        Expanded(child: _statCard('当前体重', u == null ? '—' : kg(u.currentWeight), 'kg')),
+        Expanded(child: _statCard(context, l10n.profileWeight, u == null ? '—' : kg(u.currentWeight), 'kg')),
         const SizedBox(width: 8),
-        Expanded(child: _statCard('目标体重', u == null ? '—' : kg(u.targetWeight), 'kg')),
+        Expanded(child: _statCard(context, l10n.profileTarget, u == null ? '—' : kg(u.targetWeight), 'kg')),
         const SizedBox(width: 8),
-        Expanded(child: _statCard('BMI', bmi, '')),
+        Expanded(child: _statCard(context, l10n.profileBmi, bmi, '')),
       ],
     );
   }
 
-  Widget _statCard(String label, String value, String unit) => Card(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          child: Column(
-            children: [
-              Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-              const SizedBox(height: 6),
-              RichText(text: TextSpan(
-                text: value,
-                style: const TextStyle(
-                  fontSize: 20, color: Colors.black87, fontWeight: FontWeight.w600,
-                ),
-                children: [
-                  if (unit.isNotEmpty)
-                    TextSpan(text: ' $unit',
-                        style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                ],
-              )),
-            ],
-          ),
+  Widget _statCard(BuildContext ctx, String label, String value, String unit) {
+    final scheme = Theme.of(ctx).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Column(
+          children: [
+            Text(label, style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
+            const SizedBox(height: 6),
+            RichText(text: TextSpan(
+              text: value,
+              style: TextStyle(
+                fontSize: 20, color: scheme.onSurface, fontWeight: FontWeight.w600,
+              ),
+              children: [
+                if (unit.isNotEmpty)
+                  TextSpan(text: ' $unit',
+                      style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+              ],
+            )),
+          ],
         ),
-      );
+      ),
+    );
+  }
 }
 
 class _InfoTile extends StatelessWidget {
@@ -246,12 +225,13 @@ class _InfoTile extends StatelessWidget {
   Widget build(BuildContext context) => ListTile(
         title: Text(label),
         trailing: Text(value,
-            style: const TextStyle(color: Colors.black87, fontSize: 15)),
+            style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface, fontSize: 15)),
       );
 }
 
 // ============================================================================
-//  编辑资料 BottomSheet
+//  Edit profile BottomSheet
 // ============================================================================
 
 class _EditProfileSheet extends StatefulWidget {
@@ -308,6 +288,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   }
 
   Future<void> _submit() async {
+    final l10n = AppLocalizations.of(context);
     setState(() => _submitting = true);
     try {
       final userProvider = context.read<UserProvider>();
@@ -324,13 +305,13 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('资料已更新')),
+          SnackBar(content: Text(l10n.toastProfileUpdated)),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('保存失败：$e')),
+          SnackBar(content: Text(l10n.errorSaveFailed(e.toString()))),
         );
       }
     } finally {
@@ -341,6 +322,8 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   @override
   Widget build(BuildContext context) {
     final insets = MediaQuery.of(context).viewInsets;
+    final scheme = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
     return Padding(
       padding: EdgeInsets.only(bottom: insets.bottom),
       child: DraggableScrollableSheet(
@@ -349,9 +332,9 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
         maxChildSize: 0.95,
         expand: false,
         builder: (ctx, scroll) => Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: Column(
             children: [
@@ -359,7 +342,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                 margin: const EdgeInsets.only(top: 10, bottom: 6),
                 height: 4, width: 40,
                 decoration: BoxDecoration(
-                  color: Colors.grey[300],
+                  color: scheme.outlineVariant,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -367,15 +350,15 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                 child: ListView(
                   controller: scroll,
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-                  children: _buildFields(),
+                  children: _buildFields(l10n),
                 ),
               ),
               SafeArea(
                 child: Container(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border(top: BorderSide(color: Colors.grey[200]!)),
+                    color: scheme.surface,
+                    border: Border(top: BorderSide(color: scheme.outlineVariant)),
                   ),
                   child: SizedBox(
                     width: double.infinity, height: 48,
@@ -385,7 +368,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                           ? const SizedBox(width: 20, height: 20,
                               child: CircularProgressIndicator(
                                   strokeWidth: 2, color: Colors.white))
-                          : const Text('保存'),
+                          : Text(l10n.actionSave),
                     ),
                   ),
                 ),
@@ -397,7 +380,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     );
   }
 
-  List<Widget> _buildFields() {
+  List<Widget> _buildFields(AppLocalizations l10n) {
     InputDecoration deco(String label) => InputDecoration(
           labelText: label,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -409,26 +392,26 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     return [
       Row(
         children: [
-          const Text('编辑资料',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+          Text(l10n.actionEdit,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
           const Spacer(),
           IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
         ],
       ),
       const SizedBox(height: 8),
 
-      TextField(controller: _nick, decoration: deco('昵称')),
+      TextField(controller: _nick, decoration: deco(l10n.profileNickname)),
       const SizedBox(height: 12),
 
       Row(
         children: [
           Expanded(child: DropdownButtonFormField<String>(
             initialValue: _gender,
-            decoration: deco('性别'),
-            items: const [
-              DropdownMenuItem(value: 'male',   child: Text('男')),
-              DropdownMenuItem(value: 'female', child: Text('女')),
-              DropdownMenuItem(value: 'other',  child: Text('其他')),
+            decoration: deco(l10n.profileSex),
+            items: [
+              DropdownMenuItem(value: 'male',   child: Text(l10n.sexMale)),
+              DropdownMenuItem(value: 'female', child: Text(l10n.sexFemale)),
+              DropdownMenuItem(value: 'other',  child: Text(l10n.sexOther)),
             ],
             onChanged: (v) => setState(() => _gender = v ?? 'male'),
           )),
@@ -437,7 +420,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
             onPressed: _pickBirthday,
             icon: const Icon(Icons.cake_outlined),
             label: Text(_birthday == null
-                ? '选生日'
+                ? l10n.profileBirthday
                 : '${_birthday!.year}-${_birthday!.month.toString().padLeft(2, "0")}-${_birthday!.day.toString().padLeft(2, "0")}'),
             style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 14)),
@@ -448,7 +431,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
 
       TextField(
         controller: _height,
-        decoration: deco('身高 (cm)'),
+        decoration: deco(l10n.profileHeightCm),
         keyboardType: decimalKb,
         inputFormatters: numFmt,
       ),
@@ -457,14 +440,14 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
       Row(children: [
         Expanded(child: TextField(
           controller: _curWeight,
-          decoration: deco('当前体重 (kg)'),
+          decoration: deco(l10n.profileWeightKg),
           keyboardType: decimalKb,
           inputFormatters: numFmt,
         )),
         const SizedBox(width: 12),
         Expanded(child: TextField(
           controller: _tgtWeight,
-          decoration: deco('目标体重 (kg)'),
+          decoration: deco(l10n.profileTargetKg),
           keyboardType: decimalKb,
           inputFormatters: numFmt,
         )),
@@ -473,13 +456,13 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
 
       DropdownButtonFormField<int>(
         initialValue: _activityLevel,
-        decoration: deco('活动水平'),
-        items: const [
-          DropdownMenuItem(value: 1, child: Text('久坐（几乎不运动）')),
-          DropdownMenuItem(value: 2, child: Text('轻度（每周 1-2 次）')),
-          DropdownMenuItem(value: 3, child: Text('中度（每周 3-4 次）')),
-          DropdownMenuItem(value: 4, child: Text('高度（每周 5-6 次）')),
-          DropdownMenuItem(value: 5, child: Text('极高（每天训练）')),
+        decoration: deco(l10n.profileActivityLevel),
+        items: [
+          DropdownMenuItem(value: 1, child: Text(l10n.activitySedentary)),
+          DropdownMenuItem(value: 2, child: Text(l10n.activityLight)),
+          DropdownMenuItem(value: 3, child: Text(l10n.activityModerate)),
+          DropdownMenuItem(value: 4, child: Text(l10n.activityHigh)),
+          DropdownMenuItem(value: 5, child: Text(l10n.activityVeryHigh)),
         ],
         onChanged: (v) => setState(() => _activityLevel = v ?? 1),
       ),
@@ -487,13 +470,15 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
 
       TextField(
         controller: _tgtCal,
-        decoration: deco('每日目标热量 (kcal)'),
+        decoration: deco(l10n.profileDailyCalorieTargetKcal),
         keyboardType: decimalKb,
         inputFormatters: numFmt,
       ),
       const SizedBox(height: 8),
-      Text('建议：BMR × 活动系数 × 减脂系数（0.8 左右）',
-          style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+      Text(l10n.profileTargetHint,
+          style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurfaceVariant)),
     ];
   }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import '../l10n/generated/app_localizations.dart';
 
 /// 语音输入按钮：点一下开始，再点一下停止；转写过程中实时写入
 /// 绑定的 TextEditingController，结束后可触发 onFinalized 回调（一般用于
@@ -16,7 +17,7 @@ class VoiceInputButton extends StatefulWidget {
     Key? key,
     required this.targetController,
     this.onFinalized,
-    this.localeId = 'zh-CN',
+    this.localeId = 'en-US',
   }) : super(key: key);
 
   @override
@@ -57,7 +58,7 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
               err.errorMsg.contains('no_speech') ||
               err.errorMsg.contains('timeout')) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('语音识别出错: ${err.errorMsg}')),
+            SnackBar(content: Text('Voice recognition error: ${err.errorMsg}')),
           );
         },
       );
@@ -71,7 +72,7 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
     if (!_initialized) return;
     if (!_available) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('当前环境不支持语音输入（iOS/Android/Chrome 可用）')),
+        SnackBar(content: Text(AppLocalizations.of(context).voiceNotAvailable)),
       );
       return;
     }
@@ -123,8 +124,9 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
         onPressed: null,
       );
     }
+    final l10n = AppLocalizations.of(context);
     return IconButton(
-      tooltip: _listening ? '点击停止' : '语音输入',
+      tooltip: _listening ? l10n.voiceTapToStop : l10n.voiceTapToSpeak,
       onPressed: _available ? _toggle : null,
       icon: AnimatedBuilder(
         animation: _pulse,

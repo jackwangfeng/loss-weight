@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
+import '../l10n/generated/app_localizations.dart';
 import 'food_screen.dart';
 import 'exercise_screen.dart';
 import 'weight_screen.dart';
 
-/// 把饮食 / 运动 / 体重 三个"记录"合到一个 tab 下，
-/// 通过顶部 TabBar 切换，避免底部导航过宽。
+/// Three logs (food / training / weight) under one tab with a top TabBar.
 class RecordsScreen extends StatefulWidget {
   final int initialTab;
   const RecordsScreen({Key? key, this.initialTab = 0}) : super(key: key);
@@ -31,15 +31,16 @@ class _RecordsScreenState extends State<RecordsScreen>
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('记录'),
+        title: Text(l10n.navLog),
         bottom: TabBar(
           controller: _tab,
-          tabs: const [
-            Tab(icon: Icon(Icons.restaurant), text: '饮食'),
-            Tab(icon: Icon(Icons.directions_run), text: '运动'),
-            Tab(icon: Icon(Icons.monitor_weight), text: '体重'),
+          tabs: [
+            Tab(icon: const Icon(Icons.restaurant), text: l10n.logFoodTab),
+            Tab(icon: const Icon(Icons.fitness_center), text: l10n.logTrainingTab),
+            Tab(icon: const Icon(Icons.monitor_weight), text: l10n.logWeightTab),
           ],
         ),
       ),

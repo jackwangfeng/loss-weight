@@ -3,14 +3,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import '../l10n/generated/app_localizations.dart';
 import '../providers/user_provider.dart';
 import '../services/food_service.dart';
 import '../services/ai_service.dart';
 import '../models/food_record.dart';
+import '../utils/labels.dart';
 import '../widgets/voice_input_button.dart';
 
 class FoodScreen extends StatefulWidget {
-  /// 嵌入到 RecordsScreen 的 TabBar 里时，传 false 避免双 AppBar
+  /// When embedded under RecordsScreen's TabBar, pass false to avoid double AppBar.
   final bool showAppBar;
   const FoodScreen({Key? key, this.showAppBar = true}) : super(key: key);
 
@@ -32,6 +34,8 @@ class _FoodScreenState extends State<FoodScreen> {
   }
 
   Future<void> _loadRecords() async {
+    if (!mounted) return;
+    final l10n = AppLocalizations.of(context);
     setState(() => _isLoading = true);
     try {
       final user = context.read<UserProvider>().currentUser;
@@ -39,7 +43,7 @@ class _FoodScreenState extends State<FoodScreen> {
         _records = await _foodService.getRecords(userId: user.id);
       }
     } catch (e) {
-      _toast('加载失败：$e');
+      _toast(l10n.errorLoadFailed(e.toString()));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -49,8 +53,6 @@ class _FoodScreenState extends State<FoodScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
-
-  // ---- 数据派生 ----
 
   List<FoodRecord> _todayRecords() {
     final now = DateTime.now();
@@ -70,7 +72,6 @@ class _FoodScreenState extends State<FoodScreen> {
     return map;
   }
 
-  /// 取最近 14 天内出现最多的食物名，用于"常吃"快选
   List<String> _frequentFoods({int limit = 8}) {
     final cutoff = DateTime.now().subtract(const Duration(days: 14));
     final counts = <String, int>{};
@@ -85,10 +86,11 @@ class _FoodScreenState extends State<FoodScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: widget.showAppBar
           ? AppBar(
-              title: const Text('饮食记录'),
+              title: Text(l10n.foodTitle),
               actions: [
                 IconButton(icon: const Icon(Icons.refresh), onPressed: _loadRecords),
               ],
@@ -104,7 +106,7 @@ class _FoodScreenState extends State<FoodScreen> {
         heroTag: 'food_fab',
         onPressed: () => _openAddSheet(),
         icon: const Icon(Icons.add),
-        label: const Text('记录'),
+        label: Text(l10n.actionLog),
       ),
     );
   }
@@ -119,7 +121,7 @@ class _FoodScreenState extends State<FoodScreen> {
       children: [
         _TodaySummary(records: todayItems),
         const SizedBox(height: 16),
-        if (_records.isEmpty) _buildEmpty(),
+        if (_records.isEmpty) _buildEmpty(context),
         for (final day in orderedKeys) _DayGroup(
           day: day,
           records: groups[day]!,
@@ -130,24 +132,26 @@ class _FoodScreenState extends State<FoodScreen> {
     );
   }
 
-  Widget _buildEmpty() => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 40),
-        child: Column(
-          children: [
-            Icon(Icons.restaurant, size: 64, color: Colors.grey[300]),
-            const SizedBox(height: 16),
-            Text('还没有饮食记录，点右下角开始',
-                style: TextStyle(color: Colors.grey[600])),
-          ],
-        ),
-      );
-
-  // ---- 添加/编辑底部表单 ----
+  Widget _buildEmpty(BuildContext ctx) {
+    final scheme = Theme.of(ctx).colorScheme;
+    final l10n = AppLocalizations.of(ctx);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 40),
+      child: Column(
+        children: [
+          Icon(Icons.restaurant, size: 64, color: scheme.onSurfaceVariant),
+          const SizedBox(height: 16),
+          Text(l10n.foodEmpty, style: TextStyle(color: scheme.onSurfaceVariant)),
+        ],
+      ),
+    );
+  }
 
   Future<void> _openAddSheet({FoodRecord? prefill}) async {
+    final l10n = AppLocalizations.of(context);
     final user = context.read<UserProvider>().currentUser;
     if (user == null) {
-      _toast('请先登录');
+      _toast(l10n.toastPleaseSignIn);
       return;
     }
 
@@ -170,17 +174,17 @@ class _FoodScreenState extends State<FoodScreen> {
   }
 
   Future<bool> _confirmAndDelete(FoodRecord r) async {
+    final l10n = AppLocalizations.of(context);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('删除这条记录？'),
+        title: Text(l10n.foodDeleteTitle),
         content: Text('${r.foodName} · ${r.calories.toStringAsFixed(0)} kcal'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l10n.actionCancel)),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
+            child: Text(l10n.actionDelete),
           ),
         ],
       ),
@@ -192,22 +196,22 @@ class _FoodScreenState extends State<FoodScreen> {
       _showBudgetToast();
       return true;
     } catch (e) {
-      _toast('删除失败：$e');
+      _toast(l10n.errorDeleteFailed(e.toString()));
       return false;
     }
   }
 
-  /// 记录完食物，给个「剩余额度」的及时反馈
   void _showBudgetToast() {
     if (!mounted) return;
+    final l10n = AppLocalizations.of(context);
     final user = context.read<UserProvider>().currentUser;
     if (user == null || user.targetCalorie <= 0) return;
     final today = _todayRecords();
     final eaten = today.fold<double>(0, (s, r) => s + r.calories);
     final remaining = user.targetCalorie - eaten;
     final msg = remaining >= 0
-        ? '今日已吃 ${eaten.toStringAsFixed(0)} kcal，剩余 ${remaining.toStringAsFixed(0)} kcal'
-        : '今日已吃 ${eaten.toStringAsFixed(0)} kcal，超出 ${(-remaining).toStringAsFixed(0)} kcal';
+        ? l10n.foodBudgetUnder(eaten.toStringAsFixed(0), remaining.toStringAsFixed(0))
+        : l10n.foodBudgetOver(eaten.toStringAsFixed(0), (-remaining).toStringAsFixed(0));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(msg), duration: const Duration(seconds: 3)),
     );
@@ -215,7 +219,7 @@ class _FoodScreenState extends State<FoodScreen> {
 }
 
 // ============================================================================
-//  今日热量汇总卡片
+//  Today's calorie summary card
 // ============================================================================
 
 class _TodaySummary extends StatelessWidget {
@@ -224,6 +228,8 @@ class _TodaySummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
     final user = context.watch<UserProvider>().currentUser;
     final double cal = records.fold(0.0, (s, r) => s + r.calories);
     final double protein = records.fold(0.0, (s, r) => s + r.protein);
@@ -232,11 +238,8 @@ class _TodaySummary extends StatelessWidget {
     final double target = user?.targetCalorie ?? 2000.0;
     final double pct = target > 0 ? (cal / target).clamp(0.0, 1.2) : 0.0;
     final bool over = target > 0 && cal > target;
-    final Color bar = over ? Colors.red : Colors.green;
 
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -245,13 +248,17 @@ class _TodaySummary extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('今日热量',
-                    style: TextStyle(fontSize: 14, color: Colors.grey)),
-                Text('${records.length} 餐',
-                    style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                Text(l10n.foodTodayLabel,
+                    style: TextStyle(
+                        fontSize: 11,
+                        letterSpacing: 0.8,
+                        color: scheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600)),
+                Text(l10n.foodMealCount(records.length),
+                    style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Row(
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
@@ -259,31 +266,31 @@ class _TodaySummary extends StatelessWidget {
                 Text(cal.toStringAsFixed(0),
                     style: TextStyle(
                       fontSize: 36,
-                      fontWeight: FontWeight.w600,
-                      color: over ? Colors.red : Colors.black87,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.8,
+                      color: over ? scheme.error : scheme.onSurface,
                     )),
                 Text(' / ${target.toStringAsFixed(0)} kcal',
-                    style: const TextStyle(
-                        fontSize: 14, color: Colors.grey)),
+                    style: TextStyle(fontSize: 14, color: scheme.onSurfaceVariant)),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: LinearProgressIndicator(
                 value: pct > 1.0 ? 1.0 : pct,
-                minHeight: 8,
-                backgroundColor: Colors.grey[200],
-                valueColor: AlwaysStoppedAnimation(bar),
+                minHeight: 6,
+                backgroundColor: scheme.surfaceContainerHighest,
+                valueColor: AlwaysStoppedAnimation(over ? scheme.error : scheme.primary),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _macroBadge('蛋白', protein, 'g', Colors.orange),
-                _macroBadge('碳水', carbs, 'g', Colors.blue),
-                _macroBadge('脂肪', fat, 'g', Colors.purple),
+                _macroBadge(l10n.foodMacroProtein, protein, 'g', const Color(0xFFE38B2A)),
+                _macroBadge(l10n.foodMacroCarbs, carbs, 'g', const Color(0xFF5B9BD5)),
+                _macroBadge(l10n.foodMacroFat, fat, 'g', const Color(0xFFB18CD9)),
               ],
             ),
           ],
@@ -297,15 +304,19 @@ class _TodaySummary extends StatelessWidget {
       children: [
         Text('${v.toStringAsFixed(0)}$unit',
             style: TextStyle(
-                color: c, fontSize: 16, fontWeight: FontWeight.w600)),
-        Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                color: c, fontSize: 16, fontWeight: FontWeight.w600,
+                letterSpacing: -0.2)),
+        const SizedBox(height: 2),
+        Text(label,
+            style: const TextStyle(
+                fontSize: 10, letterSpacing: 0.8, fontWeight: FontWeight.w600)),
       ],
     );
   }
 }
 
 // ============================================================================
-//  按天分组的卡片
+//  Day group card
 // ============================================================================
 
 class _DayGroup extends StatelessWidget {
@@ -320,18 +331,20 @@ class _DayGroup extends StatelessWidget {
     this.onDelete,
   });
 
-  String _label(DateTime d) {
+  String _label(AppLocalizations l10n, DateTime d) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final diff = today.difference(d).inDays;
-    if (diff == 0) return '今天';
-    if (diff == 1) return '昨天';
-    if (diff < 7) return '$diff 天前';
+    if (diff == 0) return l10n.timeToday;
+    if (diff == 1) return l10n.timeYesterdayCap;
+    if (diff < 7) return l10n.timeDaysAgo(diff);
     return '${d.month}/${d.day}';
   }
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
     final dayCal = records.fold<double>(0, (s, r) => s + r.calories);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -340,12 +353,12 @@ class _DayGroup extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
           child: Row(
             children: [
-              Text(_label(day),
+              Text(_label(l10n, day),
                   style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w600)),
+                      fontSize: 15, fontWeight: FontWeight.w600)),
               const Spacer(),
               Text('${dayCal.toStringAsFixed(0)} kcal',
-                  style: const TextStyle(color: Colors.grey, fontSize: 14)),
+                  style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13)),
             ],
           ),
         ),
@@ -358,13 +371,13 @@ class _DayGroup extends StatelessWidget {
             confirmDismiss: onDelete == null
                 ? null
                 : (_) async => await onDelete!(r),
-            background: _swipeDeleteBg(),
+            background: _swipeDeleteBg(context),
             child: Card(
               margin: const EdgeInsets.only(bottom: 8),
               child: ListTile(
                 leading: CircleAvatar(
-                  backgroundColor: _mealColor(r.mealType),
-                  child: Icon(_mealIcon(r.mealType), color: Colors.white),
+                  backgroundColor: _mealColor(r.mealType).withValues(alpha: 0.18),
+                  child: Icon(_mealIcon(r.mealType), color: _mealColor(r.mealType)),
                 ),
                 title: Row(
                   children: [
@@ -374,17 +387,17 @@ class _DayGroup extends StatelessWidget {
                       const SizedBox(width: 6),
                       Text('· ${r.portionLabel}',
                           style: TextStyle(
-                              color: Colors.grey[600], fontSize: 13)),
+                              color: scheme.onSurfaceVariant, fontSize: 13)),
                     ],
                   ],
                 ),
                 subtitle: Text(
-                    '${r.calories.toStringAsFixed(0)} kcal · ${r.mealTypeLabel}'
-                    '${r.protein > 0 ? "  蛋白${r.protein.toStringAsFixed(0)}g" : ""}'),
+                    '${r.calories.toStringAsFixed(0)} kcal · ${mealTypeLabel(l10n, r.mealType)}'
+                    '${r.protein > 0 ? "  P ${r.protein.toStringAsFixed(0)}g" : ""}'),
                 trailing: Text(
                     '${r.eatenAt.hour.toString().padLeft(2, '0')}:'
                     '${r.eatenAt.minute.toString().padLeft(2, '0')}',
-                    style: TextStyle(color: Colors.grey[600])),
+                    style: TextStyle(color: scheme.onSurfaceVariant)),
                 onTap: onTap == null ? null : () => onTap!(r),
               ),
             ),
@@ -393,24 +406,27 @@ class _DayGroup extends StatelessWidget {
     );
   }
 
-  static Widget _swipeDeleteBg() => Container(
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 24),
-        margin: const EdgeInsets.only(bottom: 8),
-        decoration: BoxDecoration(
-          color: Colors.red,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Icon(Icons.delete, color: Colors.white),
-      );
+  static Widget _swipeDeleteBg(BuildContext ctx) {
+    final scheme = Theme.of(ctx).colorScheme;
+    return Container(
+      alignment: Alignment.centerRight,
+      padding: const EdgeInsets.only(right: 24),
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: scheme.error,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Icon(Icons.delete, color: scheme.onError),
+    );
+  }
 
   static Color _mealColor(String m) {
     switch (m) {
-      case 'breakfast': return Colors.orange;
-      case 'lunch':     return Colors.green;
-      case 'dinner':    return Colors.blue;
-      case 'snack':     return Colors.purple;
-      default:          return Colors.grey;
+      case 'breakfast': return const Color(0xFFE38B2A);
+      case 'lunch':     return const Color(0xFF64B871);
+      case 'dinner':    return const Color(0xFF5B9BD5);
+      case 'snack':     return const Color(0xFFB18CD9);
+      default:          return const Color(0xFF8A8A90);
     }
   }
 
@@ -426,7 +442,7 @@ class _DayGroup extends StatelessWidget {
 }
 
 // ============================================================================
-//  添加/编辑 BottomSheet
+//  Add/Edit BottomSheet
 // ============================================================================
 
 class _AddFoodSheet extends StatefulWidget {
@@ -521,10 +537,11 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
   }
 
   Future<void> _estimateFromText() async {
+    final l10n = AppLocalizations.of(context);
     final text = _descCtrl.text.trim();
     if (text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('先写一下吃了啥，例如 "一碗米饭 200g"')),
+        SnackBar(content: Text(l10n.foodAiEmptyWarn)),
       );
       return;
     }
@@ -535,7 +552,7 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('估算失败：$e')),
+          SnackBar(content: Text(l10n.errorEstimateFailed(e.toString()))),
         );
       }
     } finally {
@@ -544,13 +561,15 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
   }
 
   Future<void> _pickAndRecognize(ImageSource src) async {
+    final l10n = AppLocalizations.of(context);
     final picker = ImagePicker();
     final XFile? img;
     try {
       img = await picker.pickImage(source: src, imageQuality: 75);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('选图失败：$e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.errorPickFailed(e.toString()))));
       return;
     }
     if (img == null) return;
@@ -564,7 +583,7 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('识别失败：$e')),
+          SnackBar(content: Text(l10n.errorRecognitionFailed(e.toString()))),
         );
       }
     } finally {
@@ -573,6 +592,7 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
   }
 
   Future<void> _pickImageSource() async {
+    final l10n = AppLocalizations.of(context);
     final src = await showModalBottomSheet<ImageSource>(
       context: context,
       builder: (ctx) => SafeArea(
@@ -580,12 +600,12 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
           children: [
             ListTile(
               leading: const Icon(Icons.camera_alt),
-              title: const Text('拍照'),
+              title: Text(l10n.actionTakePhoto),
               onTap: () => Navigator.pop(ctx, ImageSource.camera),
             ),
             ListTile(
               leading: const Icon(Icons.photo_library),
-              title: const Text('从相册选'),
+              title: Text(l10n.actionChooseFromLibrary),
               onTap: () => Navigator.pop(ctx, ImageSource.gallery),
             ),
           ],
@@ -615,10 +635,11 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
   }
 
   Future<void> _submit() async {
+    final l10n = AppLocalizations.of(context);
     final name = _nameCtrl.text.trim();
     final cal = double.tryParse(_caloriesCtrl.text.trim()) ?? 0;
-    if (name.isEmpty) return _warn('请输入食物名');
-    if (cal <= 0) return _warn('请输入热量');
+    if (name.isEmpty) return _warn(l10n.foodNameRequired);
+    if (cal <= 0) return _warn(l10n.foodCaloriesRequired);
 
     setState(() => _submitting = true);
     try {
@@ -654,12 +675,11 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
       }
       if (mounted) {
         Navigator.pop(context, true);
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(
-                content: Text(widget.prefill == null ? '记录成功' : '更新成功')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(widget.prefill == null ? l10n.toastLogged : l10n.toastUpdated)));
       }
     } catch (e) {
-      _warn('保存失败：$e');
+      _warn(l10n.errorSaveFailed(e.toString()));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -673,6 +693,8 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
   @override
   Widget build(BuildContext context) {
     final insets = MediaQuery.of(context).viewInsets;
+    final scheme = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
     return Padding(
       padding: EdgeInsets.only(bottom: insets.bottom),
       child: DraggableScrollableSheet(
@@ -681,21 +703,21 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
         maxChildSize: 0.95,
         expand: false,
         builder: (ctx, scroll) => Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: Column(
             children: [
-              _sheetHandle(),
+              _sheetHandle(context),
               Expanded(
                 child: ListView(
                   controller: scroll,
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-                  children: _buildSections(),
+                  children: _buildSections(l10n),
                 ),
               ),
-              SafeArea(child: _submitBar()),
+              SafeArea(child: _submitBar(context, l10n)),
             ],
           ),
         ),
@@ -703,22 +725,22 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
     );
   }
 
-  Widget _sheetHandle() => Container(
+  Widget _sheetHandle(BuildContext ctx) => Container(
         margin: const EdgeInsets.only(top: 10, bottom: 6),
         height: 4,
         width: 40,
         decoration: BoxDecoration(
-          color: Colors.grey[300],
+          color: Theme.of(ctx).colorScheme.outlineVariant,
           borderRadius: BorderRadius.circular(2),
         ),
       );
 
-  List<Widget> _buildSections() {
+  List<Widget> _buildSections(AppLocalizations l10n) {
     final freq = widget.frequentFoods;
     return [
       Row(
         children: [
-          Text(widget.prefill == null ? '添加饮食记录' : '编辑饮食记录',
+          Text(widget.prefill == null ? l10n.foodLogSheetTitle : l10n.foodEditSheetTitle,
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
           const Spacer(),
           IconButton(
@@ -729,23 +751,14 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
       ),
       const SizedBox(height: 8),
 
-      // --- AI 输入区 ---
-      _sectionTitle('让 AI 帮你算'),
+      _sectionTitle(l10n.foodSectionAiEstimate),
       Row(
         children: [
           Expanded(
             child: TextField(
               controller: _descCtrl,
               decoration: InputDecoration(
-                hintText: '例：一碗米饭 200g、宫保鸡丁一份',
-                filled: true,
-                fillColor: Colors.grey[100],
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 12),
+                hintText: l10n.foodAiHint,
               ),
               textInputAction: TextInputAction.done,
               onSubmitted: (_) => _estimateFromText(),
@@ -757,7 +770,7 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
             child: _aiLoading
                 ? const SizedBox(width: 16, height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('估算'),
+                : Text(l10n.actionEstimate),
           ),
           VoiceInputButton(
             targetController: _descCtrl,
@@ -765,16 +778,15 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
           ),
           IconButton(
             icon: const Icon(Icons.camera_alt),
-            tooltip: '拍照识别',
+            tooltip: l10n.actionRecognizeFromPhoto,
             onPressed: _aiLoading ? null : _pickImageSource,
           ),
         ],
       ),
 
-      // --- 常吃快选 ---
       if (freq.isNotEmpty) ...[
         const SizedBox(height: 16),
-        _sectionTitle('常吃'),
+        _sectionTitle(l10n.foodSectionFrequent),
         Wrap(
           spacing: 8,
           runSpacing: 4,
@@ -795,11 +807,11 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
       ],
 
       const SizedBox(height: 20),
-      _sectionTitle('详细信息'),
+      _sectionTitle(l10n.foodSectionDetails),
 
       TextField(
         controller: _nameCtrl,
-        decoration: _deco(label: '食物名 *'),
+        decoration: _deco(label: l10n.foodName),
         textInputAction: TextInputAction.next,
       ),
       const SizedBox(height: 12),
@@ -808,7 +820,7 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
           Expanded(
             child: TextField(
               controller: _caloriesCtrl,
-              decoration: _deco(label: '热量 (kcal) *'),
+              decoration: _deco(label: l10n.foodCalories),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
@@ -821,7 +833,7 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
             width: 120,
             child: TextField(
               controller: _portionCtrl,
-              decoration: _deco(label: '份量'),
+              decoration: _deco(label: l10n.foodPortion),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
@@ -831,11 +843,11 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
           const SizedBox(width: 8),
           DropdownButton<String>(
             value: _unit,
-            items: const [
-              DropdownMenuItem(value: 'g',  child: Text('克')),
-              DropdownMenuItem(value: 'ml', child: Text('毫升')),
-              DropdownMenuItem(value: '份', child: Text('份')),
-              DropdownMenuItem(value: '个', child: Text('个')),
+            items: [
+              DropdownMenuItem(value: 'g',       child: Text(l10n.foodUnitGram)),
+              DropdownMenuItem(value: 'ml',      child: Text(l10n.foodUnitMl)),
+              DropdownMenuItem(value: 'serving', child: Text(l10n.foodUnitServing)),
+              DropdownMenuItem(value: 'piece',   child: Text(l10n.foodUnitPiece)),
             ],
             onChanged: (v) => setState(() => _unit = v ?? 'g'),
           ),
@@ -847,12 +859,12 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
           Expanded(
             child: DropdownButtonFormField<String>(
               initialValue: _mealType,
-              decoration: _deco(label: '餐次'),
-              items: const [
-                DropdownMenuItem(value: 'breakfast', child: Text('早餐')),
-                DropdownMenuItem(value: 'lunch',     child: Text('午餐')),
-                DropdownMenuItem(value: 'dinner',    child: Text('晚餐')),
-                DropdownMenuItem(value: 'snack',     child: Text('加餐')),
+              decoration: _deco(label: l10n.foodMeal),
+              items: [
+                DropdownMenuItem(value: 'breakfast', child: Text(l10n.mealBreakfast)),
+                DropdownMenuItem(value: 'lunch',     child: Text(l10n.mealLunch)),
+                DropdownMenuItem(value: 'dinner',    child: Text(l10n.mealDinner)),
+                DropdownMenuItem(value: 'snack',     child: Text(l10n.mealSnack)),
               ],
               onChanged: (v) => setState(() => _mealType = v ?? 'breakfast'),
             ),
@@ -874,7 +886,6 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
       ),
       const SizedBox(height: 12),
 
-      // 展开/收起营养素详情
       InkWell(
         onTap: () => setState(() => _showMacros = !_showMacros),
         child: Padding(
@@ -882,10 +893,12 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
           child: Row(
             children: [
               Icon(_showMacros ? Icons.expand_less : Icons.expand_more,
-                  size: 20, color: Colors.grey[700]),
+                  size: 20,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
               const SizedBox(width: 4),
-              Text('营养素（可选）',
-                  style: TextStyle(color: Colors.grey[700])),
+              Text(l10n.foodMacrosOptional,
+                  style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant)),
             ],
           ),
         ),
@@ -895,7 +908,7 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
           Expanded(
             child: TextField(
               controller: _proteinCtrl,
-              decoration: _deco(label: '蛋白(g)'),
+              decoration: _deco(label: l10n.foodProteinG),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
             ),
           ),
@@ -903,7 +916,7 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
           Expanded(
             child: TextField(
               controller: _carbsCtrl,
-              decoration: _deco(label: '碳水(g)'),
+              decoration: _deco(label: l10n.foodCarbsG),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
             ),
           ),
@@ -911,7 +924,7 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
           Expanded(
             child: TextField(
               controller: _fatCtrl,
-              decoration: _deco(label: '脂肪(g)'),
+              decoration: _deco(label: l10n.foodFatG),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
             ),
           ),
@@ -922,7 +935,6 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
 
   InputDecoration _deco({required String label}) => InputDecoration(
         labelText: label,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       );
@@ -931,29 +943,34 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
         padding: const EdgeInsets.only(bottom: 8),
         child: Text(t,
             style: TextStyle(
-                fontSize: 13, color: Colors.grey[700], fontWeight: FontWeight.w600)),
+                fontSize: 11,
+                letterSpacing: 0.8,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600)),
       );
 
-  Widget _submitBar() => Container(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border(top: BorderSide(color: Colors.grey[200]!)),
+  Widget _submitBar(BuildContext ctx, AppLocalizations l10n) {
+    final scheme = Theme.of(ctx).colorScheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border(top: BorderSide(color: scheme.outlineVariant)),
+      ),
+      child: SizedBox(
+        width: double.infinity,
+        height: 48,
+        child: FilledButton(
+          onPressed: _submitting ? null : _submit,
+          child: _submitting
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white))
+              : Text(l10n.actionSave),
         ),
-        child: SizedBox(
-          width: double.infinity,
-          height: 48,
-          child: FilledButton(
-            onPressed: _submitting ? null : _submit,
-            child: _submitting
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white))
-                : const Text('保存'),
-          ),
-        ),
-      );
+      ),
+    );
+  }
 }
-

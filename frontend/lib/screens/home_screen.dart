@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
+import '../l10n/generated/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/user_provider.dart';
 import '../screens/login_screen.dart';
+import '../utils/labels.dart';
 import 'records_screen.dart';
 import 'ai_screen.dart';
 import 'profile_screen.dart';
@@ -24,10 +26,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
-  // 记录 tab 里的内部 tab 索引（0=饮食 1=运动 2=体重）
   int _recordsTab = 0;
 
-  /// 外部快捷动作调用：切到"记录"，并预选内部子 tab
   void jumpToRecords(int subTab) {
     setState(() {
       _selectedIndex = 1;
@@ -35,16 +35,21 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  void jumpToCoach() {
+    setState(() {
+      _selectedIndex = 2;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Consumer2<AuthProvider, UserProvider>(
       builder: (context, authProvider, userProvider, child) {
         final isLoggedIn = authProvider.isLoggedIn;
         final user = userProvider.currentUser;
 
         return Scaffold(
-          // 记录页带内部 TabBar：initialTab 用 key 触发，每次想直达某一 tab
-          // 就换 key
           body: IndexedStack(
             index: _selectedIndex,
             children: [
@@ -61,26 +66,26 @@ class _HomeScreenState extends State<HomeScreen> {
                 _selectedIndex = index;
               });
             },
-            destinations: const [
+            destinations: [
               NavigationDestination(
-                icon: Icon(Icons.home_outlined),
-                selectedIcon: Icon(Icons.home),
-                label: '首页',
+                icon: const Icon(Icons.dashboard_outlined),
+                selectedIcon: const Icon(Icons.dashboard),
+                label: l10n.navToday,
               ),
               NavigationDestination(
-                icon: Icon(Icons.edit_note_outlined),
-                selectedIcon: Icon(Icons.edit_note),
-                label: '记录',
+                icon: const Icon(Icons.edit_note_outlined),
+                selectedIcon: const Icon(Icons.edit_note),
+                label: l10n.navLog,
               ),
               NavigationDestination(
-                icon: Icon(Icons.smart_toy_outlined),
-                selectedIcon: Icon(Icons.smart_toy),
-                label: 'AI',
+                icon: const Icon(Icons.chat_outlined),
+                selectedIcon: const Icon(Icons.chat),
+                label: l10n.navCoach,
               ),
               NavigationDestination(
-                icon: Icon(Icons.person_outlined),
-                selectedIcon: Icon(Icons.person),
-                label: '我的',
+                icon: const Icon(Icons.person_outlined),
+                selectedIcon: const Icon(Icons.person),
+                label: l10n.navMe,
               ),
             ],
           ),
@@ -102,6 +107,7 @@ class DashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final userProvider = Provider.of<UserProvider>(context, listen: false);
 
     if (!isLoggedIn) {
@@ -111,7 +117,7 @@ class DashboardScreen extends StatelessWidget {
     if (user == null) {
       return Scaffold(
         appBar: AppBar(
-          title: const Text('减肥 AI 助理'),
+          title: Text(l10n.appTitle),
           actions: [
             IconButton(
               icon: const Icon(Icons.refresh),
@@ -128,65 +134,65 @@ class DashboardScreen extends StatelessWidget {
       );
     }
 
-    return RefreshIndicator(
-      onRefresh: () async {
-        final authProvider = Provider.of<AuthProvider>(context, listen: false);
-        if (authProvider.userId != null) {
-          await userProvider.loadUser(authProvider.userId!);
-        }
-      },
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // AI 今日简报卡
-            _DailyBriefCard(userId: user.id, onChatTap: () {
-              final homeState = context.findAncestorStateOfType<_HomeScreenState>();
-              homeState?.setState(() {
-                homeState._selectedIndex = 2;
-              });
-            }),
-            const SizedBox(height: 16),
-            // 最近记录时间轴
-            _RecentTimeline(
-              userId: user.id,
-              onTap: (kind) {
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.appTitle)),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          final authProvider = Provider.of<AuthProvider>(context, listen: false);
+          if (authProvider.userId != null) {
+            await userProvider.loadUser(authProvider.userId!);
+          }
+        },
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _DailyBriefCard(userId: user.id, onChatTap: () {
                 final homeState = context.findAncestorStateOfType<_HomeScreenState>();
-                homeState?.jumpToRecords(kind);
-              },
-            ),
-          ],
+                homeState?.jumpToCoach();
+              }),
+              const SizedBox(height: 16),
+              _RecentTimeline(
+                userId: user.id,
+                onTap: (kind) {
+                  final homeState = context.findAncestorStateOfType<_HomeScreenState>();
+                  homeState?.jumpToRecords(kind);
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildLoginView(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('减肥 AI 助理'),
-      ),
+      appBar: AppBar(title: Text(l10n.appTitle)),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.fitness_center, size: 100, color: Colors.green),
+            Icon(Icons.fitness_center, size: 100, color: scheme.primary),
             const SizedBox(height: 24),
-            const Text(
-              '减肥 AI 助理',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
+            Text(
+              l10n.appTitle,
+              style: const TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.5,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              '轻松减肥，AI 陪你',
+            Text(
+              l10n.appTagline,
               style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey,
+                fontSize: 14,
+                color: scheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 48),
@@ -201,12 +207,12 @@ class DashboardScreen extends StatelessWidget {
 
                 if (result == true && context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('欢迎回来！')),
+                    SnackBar(content: Text(l10n.toastWelcomeBack)),
                   );
                 }
               },
               icon: const Icon(Icons.login),
-              label: const Text('开始使用'),
+              label: Text(l10n.actionGetStarted),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
               ),
@@ -216,12 +222,10 @@ class DashboardScreen extends StatelessWidget {
       ),
     );
   }
-
 }
 
 // ============================================================================
-//  AI 今日简报卡片
-//  进入首页异步拉一次；剩余额度、建议一段 AI 生成的点评
+//  Daily AI brief card
 // ============================================================================
 
 class _DailyBriefCard extends StatefulWidget {
@@ -257,10 +261,9 @@ class _DailyBriefCardState extends State<_DailyBriefCard> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
     return Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      color: Colors.green[50],
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -268,13 +271,13 @@ class _DailyBriefCardState extends State<_DailyBriefCard> {
           children: [
             Row(
               children: [
-                Icon(Icons.auto_awesome, size: 18, color: Colors.green[800]),
+                Icon(Icons.auto_awesome, size: 16, color: scheme.primary),
                 const SizedBox(width: 6),
-                Text('今日 AI 简报',
-                    style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.green[900],
-                        fontWeight: FontWeight.w600)),
+                Text(l10n.homeTodaySection.toUpperCase(),
+                    style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.4)),
                 const Spacer(),
                 IconButton(
                   icon: const Icon(Icons.refresh, size: 18),
@@ -284,25 +287,25 @@ class _DailyBriefCardState extends State<_DailyBriefCard> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             if (_loading && _data == null)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 24),
                 child: Center(child: CircularProgressIndicator()),
               )
             else if (_error != null)
-              Text('加载失败：$_error',
-                  style: const TextStyle(color: Colors.red))
+              Text(l10n.homeFailedToLoad(_error!),
+                  style: TextStyle(color: scheme.error))
             else if (_data != null) ...[
-              _buildBudgetRow(),
+              _buildBudgetRow(l10n),
               const SizedBox(height: 10),
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
                 child: LinearProgressIndicator(
                   value: _progress(),
                   minHeight: 6,
-                  backgroundColor: Colors.white,
-                  valueColor: AlwaysStoppedAnimation(_progressColor()),
+                  backgroundColor: scheme.surfaceContainerHighest,
+                  valueColor: AlwaysStoppedAnimation(_progressColor(context)),
                 ),
               ),
               if ((_data!['brief'] ?? '').toString().isNotEmpty) ...[
@@ -311,10 +314,10 @@ class _DailyBriefCardState extends State<_DailyBriefCard> {
                   data: _data!['brief'].toString(),
                   softLineBreak: true,
                   styleSheet: MarkdownStyleSheet(
-                    p: const TextStyle(
-                        fontSize: 14, color: Colors.black87, height: 1.5),
-                    strong: const TextStyle(
-                        fontSize: 14, color: Colors.black87, fontWeight: FontWeight.w600),
+                    p: TextStyle(
+                        fontSize: 14, color: scheme.onSurface, height: 1.5),
+                    strong: TextStyle(
+                        fontSize: 14, color: scheme.onSurface, fontWeight: FontWeight.w600),
                     blockSpacing: 4,
                   ),
                 ),
@@ -324,7 +327,7 @@ class _DailyBriefCardState extends State<_DailyBriefCard> {
                   child: TextButton.icon(
                     onPressed: widget.onChatTap,
                     icon: const Icon(Icons.chat_bubble_outline, size: 16),
-                    label: const Text('跟 AI 聊聊'),
+                    label: Text(l10n.actionAskCoach),
                   ),
                 ),
               ],
@@ -344,64 +347,78 @@ class _DailyBriefCardState extends State<_DailyBriefCard> {
     return (net / tgt).clamp(0.0, 1.2).toDouble();
   }
 
-  Color _progressColor() {
+  Color _progressColor(BuildContext ctx) {
+    final scheme = Theme.of(ctx).colorScheme;
     final tgt = (_data?['target_calories'] as num?)?.toDouble() ?? 0;
     final eaten = (_data?['calories_eaten'] as num?)?.toDouble() ?? 0;
     final burned = (_data?['calories_burned'] as num?)?.toDouble() ?? 0;
-    return (eaten - burned) > tgt ? Colors.red : Colors.green;
+    return (eaten - burned) > tgt ? scheme.error : scheme.primary;
   }
 
-  Widget _buildBudgetRow() {
+  Widget _buildBudgetRow(AppLocalizations l10n) {
+    final scheme = Theme.of(context).colorScheme;
     final tgt = (_data?['target_calories'] as num?)?.toDouble() ?? 0;
     final eaten = (_data?['calories_eaten'] as num?)?.toDouble() ?? 0;
     final burned = (_data?['calories_burned'] as num?)?.toDouble() ?? 0;
     final remaining = (_data?['calories_remaining'] as num?)?.toDouble() ?? 0;
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        _pill('目标', tgt),
+        _pill(l10n.homeBudgetTarget, tgt),
         _arrow(),
-        _pill('吃', eaten),
+        _pill(l10n.homeBudgetIn, eaten),
         _arrow(),
-        _pill('烧', burned),
+        _pill(l10n.homeBudgetOut, burned),
         const Spacer(),
-        Text('剩余 ${remaining.toStringAsFixed(0)}',
+        Text(l10n.homeBudgetLeft(remaining.toStringAsFixed(0)),
             style: TextStyle(
                 fontSize: 13,
-                color: remaining < 0 ? Colors.red : Colors.green[900],
+                color: remaining < 0 ? scheme.error : scheme.onSurface,
                 fontWeight: FontWeight.w600)),
       ],
     );
   }
 
-  Widget _pill(String label, double value) => Padding(
-        padding: const EdgeInsets.only(right: 6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label,
-                style: const TextStyle(fontSize: 10, color: Colors.grey)),
-            Text(value.toStringAsFixed(0),
-                style: const TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w600)),
-          ],
-        ),
-      );
+  Widget _pill(String label, double value) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: TextStyle(
+                  fontSize: 9,
+                  letterSpacing: 0.8,
+                  color: scheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 2),
+          Text(value.toStringAsFixed(0),
+              style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.3)),
+        ],
+      ),
+    );
+  }
 
-  Widget _arrow() => const Padding(
-        padding: EdgeInsets.only(right: 6, top: 10),
-        child: Icon(Icons.arrow_right_alt, size: 16, color: Colors.grey),
-      );
+  Widget _arrow() {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8, bottom: 2),
+      child: Icon(Icons.arrow_right_alt, size: 14, color: scheme.onSurfaceVariant),
+    );
+  }
 }
 
 // ============================================================================
-//  最近记录时间轴
-//  把 food / exercise / weight 三路合并按时间排序，只显示最近 N 条。
-//  点击某条跳到对应 tab。
+//  Recent log timeline
 // ============================================================================
 
 class _RecentTimeline extends StatefulWidget {
   final int userId;
-  /// kind: 0=饮食 1=运动 2=体重
+  /// kind: 0=food 1=exercise 2=weight
   final void Function(int kind) onTap;
   const _RecentTimeline({required this.userId, required this.onTap});
   @override
@@ -439,6 +456,8 @@ class _RecentTimelineState extends State<_RecentTimeline> {
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
+    final l10n = AppLocalizations.of(context);
     setState(() => _loading = true);
     try {
       final results = await Future.wait([
@@ -452,19 +471,19 @@ class _RecentTimelineState extends State<_RecentTimeline> {
           at: r.eatenAt,
           kind: 0,
           icon: Icons.restaurant,
-          color: Colors.orange,
+          color: const Color(0xFFE38B2A),
           title: r.foodName,
-          subtitle: '${r.calories.toStringAsFixed(0)} kcal · ${r.mealTypeLabel}',
+          subtitle: '${r.calories.toStringAsFixed(0)} kcal · ${mealTypeLabel(l10n, r.mealType)}',
         ));
       }
       for (final r in (results[1] as List<ExerciseRecord>)) {
         items.add(_TimelineItem(
           at: r.exercisedAt,
           kind: 1,
-          icon: Icons.directions_run,
-          color: Colors.red,
+          icon: Icons.fitness_center,
+          color: const Color(0xFFE53935),
           title: r.type,
-          subtitle: '${r.durationMin} 分钟 · ${r.caloriesBurned.toStringAsFixed(0)} kcal',
+          subtitle: '${r.durationMin} min · ${r.caloriesBurned.toStringAsFixed(0)} kcal',
         ));
       }
       for (final r in (results[2] as List<WeightRecord>)) {
@@ -472,41 +491,41 @@ class _RecentTimelineState extends State<_RecentTimeline> {
           at: r.measuredAt,
           kind: 2,
           icon: Icons.monitor_weight,
-          color: Colors.blue,
+          color: const Color(0xFF5B9BD5),
           title: '${r.weight.toStringAsFixed(1)} kg',
-          subtitle: r.note.isEmpty ? '称重' : '称重 · ${r.note}',
+          subtitle: r.note.isEmpty ? l10n.weightWeighIn : '${l10n.weightWeighIn} · ${r.note}',
         ));
       }
       items.sort((a, b) => b.at.compareTo(a.at));
       _items = items.take(6).toList();
     } catch (_) {
-      // 静默，首页不应弹红 toast 吓人
+      // Silent on home.
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  String _relative(DateTime d) {
+  String _relative(AppLocalizations l10n, DateTime d) {
     final now = DateTime.now();
     final diff = now.difference(d);
-    if (diff.inSeconds < 60) return '刚刚';
-    if (diff.inMinutes < 60) return '${diff.inMinutes} 分钟前';
+    if (diff.inSeconds < 60) return l10n.timeJustNow;
+    if (diff.inMinutes < 60) return l10n.timeMinutesAgo(diff.inMinutes);
     if (diff.inHours < 24 && now.day == d.day) {
-      return '今天 ${d.hour.toString().padLeft(2, "0")}:${d.minute.toString().padLeft(2, "0")}';
+      return '${d.hour.toString().padLeft(2, "0")}:${d.minute.toString().padLeft(2, "0")}';
     }
     if (diff.inDays == 1 ||
         (diff.inHours < 48 && now.day - d.day == 1)) {
-      return '昨天 ${d.hour.toString().padLeft(2, "0")}:${d.minute.toString().padLeft(2, "0")}';
+      return l10n.timeYesterday;
     }
-    if (diff.inDays < 7) return '${diff.inDays} 天前';
+    if (diff.inDays < 7) return l10n.timeDaysAgo(diff.inDays);
     return '${d.month}/${d.day}';
   }
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
     return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
         child: Column(
@@ -516,13 +535,13 @@ class _RecentTimelineState extends State<_RecentTimeline> {
               padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
               child: Row(
                 children: [
-                  Icon(Icons.history, size: 16, color: Colors.grey[700]),
+                  Icon(Icons.history, size: 14, color: scheme.onSurfaceVariant),
                   const SizedBox(width: 6),
-                  Text('最近记录',
-                      style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[800],
-                          fontWeight: FontWeight.w600)),
+                  Text(l10n.homeRecentSection.toUpperCase(),
+                      style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.4)),
                   const Spacer(),
                   IconButton(
                     padding: EdgeInsets.zero,
@@ -542,8 +561,8 @@ class _RecentTimelineState extends State<_RecentTimeline> {
               Padding(
                 padding: const EdgeInsets.all(24),
                 child: Center(
-                  child: Text('还没有记录，去 "记录" 页开始吧',
-                      style: TextStyle(color: Colors.grey[600])),
+                  child: Text(l10n.homeEmpty,
+                      style: TextStyle(color: scheme.onSurfaceVariant)),
                 ),
               )
             else
@@ -552,15 +571,16 @@ class _RecentTimelineState extends State<_RecentTimeline> {
                   dense: true,
                   leading: CircleAvatar(
                     radius: 16,
-                    backgroundColor: item.color.withValues(alpha: 0.15),
+                    backgroundColor: item.color.withValues(alpha: 0.18),
                     child: Icon(item.icon, size: 16, color: item.color),
                   ),
                   title: Text(item.title,
                       maxLines: 1, overflow: TextOverflow.ellipsis),
                   subtitle: Text(item.subtitle,
-                      maxLines: 1, overflow: TextOverflow.ellipsis),
-                  trailing: Text(_relative(item.at),
-                      style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: scheme.onSurfaceVariant)),
+                  trailing: Text(_relative(l10n, item.at),
+                      style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
                   onTap: () => widget.onTap(item.kind),
                 ),
           ],

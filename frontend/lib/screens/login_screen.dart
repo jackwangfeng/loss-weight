@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../l10n/generated/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/user_provider.dart';
 
@@ -14,7 +15,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _phoneController = TextEditingController();
   final _codeController = TextEditingController();
-  
+
   bool _isCodeSent = false;
   int _countdown = 60;
 
@@ -27,9 +28,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('登录'),
+        title: Text(l10n.actionSignIn),
       ),
       body: SafeArea(
         child: Padding(
@@ -38,31 +41,32 @@ class _LoginScreenState extends State<LoginScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 48),
-              // Logo 和标题
               Icon(
                 Icons.fitness_center,
-                size: 80,
-                color: Theme.of(context).colorScheme.primary,
+                size: 72,
+                color: scheme.primary,
               ),
               const SizedBox(height: 24),
               Text(
-                '减肥 AI 助理',
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
+                l10n.appTitle,
+                style: const TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.5,
                 ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
               Text(
-                '轻松减肥，AI 陪你',
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: Colors.grey[600],
+                l10n.appTagline,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: scheme.onSurfaceVariant,
                 ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 48),
-              
-              // 手机号输入
+
               Form(
                 key: _formKey,
                 child: Column(
@@ -72,26 +76,22 @@ class _LoginScreenState extends State<LoginScreen> {
                       controller: _phoneController,
                       keyboardType: TextInputType.phone,
                       decoration: InputDecoration(
-                        labelText: '手机号',
-                        hintText: '请输入 11 位手机号',
+                        labelText: l10n.authPhoneLabel,
+                        hintText: l10n.authPhoneHint,
                         prefixIcon: const Icon(Icons.phone),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return '请输入手机号';
+                          return l10n.authPhoneRequired;
                         }
                         if (!RegExp(r'^1[3-9]\d{9}$').hasMatch(value)) {
-                          return '请输入正确的手机号';
+                          return l10n.authPhoneInvalid;
                         }
                         return null;
                       },
                     ),
                     const SizedBox(height: 16),
-                    
-                    // 验证码输入
+
                     Row(
                       children: [
                         Expanded(
@@ -99,20 +99,17 @@ class _LoginScreenState extends State<LoginScreen> {
                             controller: _codeController,
                             keyboardType: TextInputType.number,
                             decoration: InputDecoration(
-                              labelText: '验证码',
-                              hintText: '6 位验证码',
+                              labelText: l10n.authCodeLabel,
+                              hintText: l10n.authCodeHint,
                               prefixIcon: const Icon(Icons.shield),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
                             ),
                             maxLength: 6,
                             validator: (value) {
                               if (value == null || value.isEmpty) {
-                                return '请输入验证码';
+                                return l10n.authCodeRequired;
                               }
                               if (value.length != 6) {
-                                return '验证码必须是 6 位';
+                                return l10n.authCodeWrongLength;
                               }
                               return null;
                             },
@@ -122,45 +119,42 @@ class _LoginScreenState extends State<LoginScreen> {
                         ElevatedButton(
                           onPressed: _isCodeSent ? null : _sendCode,
                           style: ElevatedButton.styleFrom(
-                            minimumSize: const Size(120, 56),
+                            minimumSize: const Size(130, 56),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(10),
                             ),
                           ),
                           child: Text(
-                            _isCodeSent ? '$_countdown 秒后重发' : '获取验证码',
+                            _isCodeSent
+                                ? l10n.actionResendCode(_countdown)
+                                : l10n.actionSendCode,
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 32),
-                    
-                    // 登录按钮
-                    ElevatedButton(
+
+                    FilledButton(
                       onPressed: _login,
-                      style: ElevatedButton.styleFrom(
+                      style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
                       ),
-                      child: const Text(
-                        '登录',
-                        style: TextStyle(fontSize: 18),
+                      child: Text(
+                        l10n.actionSignIn,
+                        style: const TextStyle(fontSize: 16),
                       ),
                     ),
                   ],
                 ),
               ),
-              
+
               const Spacer(),
-              
-              // 提示信息
+
               Text(
-                '登录即表示你同意《用户协议》和《隐私政策》',
+                l10n.authTerms,
                 style: TextStyle(
                   fontSize: 12,
-                  color: Colors.grey[600],
+                  color: scheme.onSurfaceVariant,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -177,17 +171,17 @@ class _LoginScreenState extends State<LoginScreen> {
 
     final phone = _phoneController.text;
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final l10n = AppLocalizations.of(context);
 
     try {
       await authProvider.sendSMSCode(phone);
-      
+
       if (mounted) {
         setState(() {
           _isCodeSent = true;
           _countdown = 60;
         });
 
-        // 开始倒计时
         Future.delayed(const Duration(seconds: 1), () {
           if (mounted) {
             setState(() {
@@ -196,7 +190,6 @@ class _LoginScreenState extends State<LoginScreen> {
           }
         });
 
-        // 模拟倒计时（实际应该用 Timer）
         for (int i = 59; i > 0; i--) {
           await Future.delayed(const Duration(seconds: 1));
           if (mounted) {
@@ -212,20 +205,16 @@ class _LoginScreenState extends State<LoginScreen> {
           });
         }
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('验证码已发送，请查收短信'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(l10n.toastCodeSent)),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('发送失败：$e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text(l10n.errorSendFailed(e.toString()))),
         );
       }
     }
@@ -237,33 +226,28 @@ class _LoginScreenState extends State<LoginScreen> {
     final phone = _phoneController.text;
     final code = _codeController.text;
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final l10n = AppLocalizations.of(context);
 
     try {
       await authProvider.phoneLogin(phone, code);
-      
+
       if (mounted) {
-        // 登录成功后，加载用户信息到 UserProvider
         if (authProvider.userId != null) {
           final userProvider = Provider.of<UserProvider>(context, listen: false);
           await userProvider.loadUser(authProvider.userId!);
         }
-        
-        // 登录成功，返回首页
-        Navigator.of(context).pop(true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('登录成功'),
-            backgroundColor: Colors.green,
-          ),
-        );
+
+        if (mounted) {
+          Navigator.of(context).pop(true);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(l10n.toastSignedIn)),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('登录失败：$e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text(l10n.errorSignInFailed(e.toString()))),
         );
       }
     }
