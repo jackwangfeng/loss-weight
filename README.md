@@ -33,7 +33,6 @@ flutter run -d web-server --web-port 8888
 - `CLAUDE.md` — project conventions, contracts, pitfalls. Read before editing.
 - `STRATEGY_PIVOT.txt` — business / positioning working doc (untracked, lives
   at repo root).
-- `docs/` — pre-pivot PRD / roadmap / architecture. Historical, skim only.
 
 ## Tests
 
