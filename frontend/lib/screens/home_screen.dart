@@ -17,6 +17,7 @@ import '../services/weight_service.dart';
 import '../models/food_record.dart';
 import '../models/exercise_record.dart';
 import '../models/weight_record.dart';
+import '../widgets/macro_dashboard_card.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -154,6 +155,8 @@ class DashboardScreen extends StatelessWidget {
                 final homeState = context.findAncestorStateOfType<_HomeScreenState>();
                 homeState?.jumpToCoach();
               }),
+              const SizedBox(height: 16),
+              _TodayMacroCard(userId: user.id),
               const SizedBox(height: 16),
               _RecentTimeline(
                 userId: user.id,
@@ -591,5 +594,50 @@ class _RecentTimelineState extends State<_RecentTimeline> {
         ),
       ),
     );
+  }
+}
+
+// ============================================================================
+//  Home macro dashboard — loads today's food and hands off to MacroDashboardCard
+// ============================================================================
+
+class _TodayMacroCard extends StatefulWidget {
+  final int userId;
+  const _TodayMacroCard({required this.userId});
+  @override
+  State<_TodayMacroCard> createState() => _TodayMacroCardState();
+}
+
+class _TodayMacroCardState extends State<_TodayMacroCard> {
+  final _foodSvc = FoodService();
+  List<FoodRecord> _today = [];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  Future<void> _load() async {
+    try {
+      final all = await _foodSvc.getRecords(userId: widget.userId);
+      if (!mounted) return;
+      final now = DateTime.now();
+      setState(() {
+        _today = all
+            .where((r) =>
+                r.eatenAt.year == now.year &&
+                r.eatenAt.month == now.month &&
+                r.eatenAt.day == now.day)
+            .toList();
+      });
+    } catch (_) {
+      // Silent on home — no red toast.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MacroDashboardCard(todayRecords: _today);
   }
 }

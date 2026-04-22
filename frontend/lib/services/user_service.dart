@@ -59,9 +59,12 @@ class UserService {
     double? targetWeight,
     int? activityLevel,
     double? targetCalorie,
+    double? targetProteinG,
+    double? targetCarbsG,
+    double? targetFatG,
   }) async {
     final data = <String, dynamic>{};
-    
+
     if (nickname != null) data['nickname'] = nickname;
     if (avatar != null) data['avatar'] = avatar;
     if (gender != null) data['gender'] = gender;
@@ -71,6 +74,9 @@ class UserService {
     if (targetWeight != null) data['target_weight'] = targetWeight;
     if (activityLevel != null) data['activity_level'] = activityLevel;
     if (targetCalorie != null) data['target_calorie'] = targetCalorie;
+    if (targetProteinG != null) data['target_protein_g'] = targetProteinG;
+    if (targetCarbsG != null) data['target_carbs_g'] = targetCarbsG;
+    if (targetFatG != null) data['target_fat_g'] = targetFatG;
 
     final response = await _apiService.put('/users/profile/$userId', data);
     return UserProfile.fromJson(response.data);

@@ -257,6 +257,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'Rule of thumb: BMR × activity × cut factor (~0.8)';
 
   @override
+  String get profileMacroSection => 'Macro targets';
+
+  @override
+  String get profileMacroHint =>
+      'Leave blank to auto-derive from body weight (protein = weight × 1.8, fat = weight × 0.8).';
+
+  @override
   String get sexMale => 'Male';
 
   @override
@@ -425,6 +432,49 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get foodMacroFat => 'FAT';
+
+  @override
+  String get foodMacroCal => 'CAL';
+
+  @override
+  String get foodMacroProteinFull => 'Protein';
+
+  @override
+  String get foodMacroCarbsFull => 'Carbs';
+
+  @override
+  String get foodMacroFatFull => 'Fat';
+
+  @override
+  String get foodMacroCalFull => 'Calories';
+
+  @override
+  String macroValueOfTarget(String current, String target) {
+    return '$current / $target g';
+  }
+
+  @override
+  String macroCalValueOfTarget(String current, String target) {
+    return '$current / $target kcal';
+  }
+
+  @override
+  String macroHintNeedProtein(String grams) {
+    return 'Need $grams g protein to hit target';
+  }
+
+  @override
+  String macroHintCalOver(String kcal) {
+    return '$kcal kcal over target';
+  }
+
+  @override
+  String get macroHintOnTrack => 'On track — finish strong';
+
+  @override
+  String macroHintCalLeft(String kcal) {
+    return '$kcal kcal left in budget';
+  }
 
   @override
   String foodDayCalories(String value) {

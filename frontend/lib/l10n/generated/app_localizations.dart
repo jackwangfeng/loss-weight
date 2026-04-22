@@ -542,6 +542,18 @@ abstract class AppLocalizations {
   /// **'Rule of thumb: BMR × activity × cut factor (~0.8)'**
   String get profileTargetHint;
 
+  /// No description provided for @profileMacroSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Macro targets'**
+  String get profileMacroSection;
+
+  /// No description provided for @profileMacroHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave blank to auto-derive from body weight (protein = weight × 1.8, fat = weight × 0.8).'**
+  String get profileMacroHint;
+
   /// No description provided for @sexMale.
   ///
   /// In en, this message translates to:
@@ -847,6 +859,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'FAT'**
   String get foodMacroFat;
+
+  /// No description provided for @foodMacroCal.
+  ///
+  /// In en, this message translates to:
+  /// **'CAL'**
+  String get foodMacroCal;
+
+  /// No description provided for @foodMacroProteinFull.
+  ///
+  /// In en, this message translates to:
+  /// **'Protein'**
+  String get foodMacroProteinFull;
+
+  /// No description provided for @foodMacroCarbsFull.
+  ///
+  /// In en, this message translates to:
+  /// **'Carbs'**
+  String get foodMacroCarbsFull;
+
+  /// No description provided for @foodMacroFatFull.
+  ///
+  /// In en, this message translates to:
+  /// **'Fat'**
+  String get foodMacroFatFull;
+
+  /// No description provided for @foodMacroCalFull.
+  ///
+  /// In en, this message translates to:
+  /// **'Calories'**
+  String get foodMacroCalFull;
+
+  /// No description provided for @macroValueOfTarget.
+  ///
+  /// In en, this message translates to:
+  /// **'{current} / {target} g'**
+  String macroValueOfTarget(String current, String target);
+
+  /// No description provided for @macroCalValueOfTarget.
+  ///
+  /// In en, this message translates to:
+  /// **'{current} / {target} kcal'**
+  String macroCalValueOfTarget(String current, String target);
+
+  /// No description provided for @macroHintNeedProtein.
+  ///
+  /// In en, this message translates to:
+  /// **'Need {grams} g protein to hit target'**
+  String macroHintNeedProtein(String grams);
+
+  /// No description provided for @macroHintCalOver.
+  ///
+  /// In en, this message translates to:
+  /// **'{kcal} kcal over target'**
+  String macroHintCalOver(String kcal);
+
+  /// No description provided for @macroHintOnTrack.
+  ///
+  /// In en, this message translates to:
+  /// **'On track — finish strong'**
+  String get macroHintOnTrack;
+
+  /// No description provided for @macroHintCalLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'{kcal} kcal left in budget'**
+  String macroHintCalLeft(String kcal);
 
   /// No description provided for @foodDayCalories.
   ///

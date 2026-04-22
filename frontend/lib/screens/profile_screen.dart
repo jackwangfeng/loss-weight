@@ -259,6 +259,9 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   late final TextEditingController _curWeight;
   late final TextEditingController _tgtWeight;
   late final TextEditingController _tgtCal;
+  late final TextEditingController _tgtProtein;
+  late final TextEditingController _tgtCarbs;
+  late final TextEditingController _tgtFat;
   late String _gender;
   DateTime? _birthday;
   late int _activityLevel;
@@ -273,6 +276,9 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     _curWeight = TextEditingController(text: u.currentWeight > 0 ? u.currentWeight.toStringAsFixed(1) : '');
     _tgtWeight = TextEditingController(text: u.targetWeight > 0 ? u.targetWeight.toStringAsFixed(1) : '');
     _tgtCal = TextEditingController(text: u.targetCalorie > 0 ? u.targetCalorie.toStringAsFixed(0) : '');
+    _tgtProtein = TextEditingController(text: u.targetProteinG > 0 ? u.targetProteinG.toStringAsFixed(0) : '');
+    _tgtCarbs = TextEditingController(text: u.targetCarbsG > 0 ? u.targetCarbsG.toStringAsFixed(0) : '');
+    _tgtFat = TextEditingController(text: u.targetFatG > 0 ? u.targetFatG.toStringAsFixed(0) : '');
     _gender = u.gender.isEmpty ? 'male' : u.gender;
     _birthday = u.birthday;
     _activityLevel = u.activityLevel == 0 ? 1 : u.activityLevel;
@@ -285,6 +291,9 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     _curWeight.dispose();
     _tgtWeight.dispose();
     _tgtCal.dispose();
+    _tgtProtein.dispose();
+    _tgtCarbs.dispose();
+    _tgtFat.dispose();
     super.dispose();
   }
 
@@ -313,6 +322,9 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
         targetWeight: double.tryParse(_tgtWeight.text.trim()),
         activityLevel: _activityLevel,
         targetCalorie: double.tryParse(_tgtCal.text.trim()),
+        targetProteinG: double.tryParse(_tgtProtein.text.trim()),
+        targetCarbsG: double.tryParse(_tgtCarbs.text.trim()),
+        targetFatG: double.tryParse(_tgtFat.text.trim()),
       );
       if (mounted) {
         Navigator.pop(context);
@@ -488,6 +500,45 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
       ),
       const SizedBox(height: 8),
       Text(l10n.profileTargetHint,
+          style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurfaceVariant)),
+
+      const SizedBox(height: 20),
+      Text(
+        l10n.profileMacroSection.toUpperCase(),
+        style: TextStyle(
+          fontSize: 11,
+          letterSpacing: 0.8,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      const SizedBox(height: 8),
+      Row(children: [
+        Expanded(child: TextField(
+          controller: _tgtProtein,
+          decoration: deco(l10n.foodProteinG),
+          keyboardType: decimalKb,
+          inputFormatters: numFmt,
+        )),
+        const SizedBox(width: 8),
+        Expanded(child: TextField(
+          controller: _tgtCarbs,
+          decoration: deco(l10n.foodCarbsG),
+          keyboardType: decimalKb,
+          inputFormatters: numFmt,
+        )),
+        const SizedBox(width: 8),
+        Expanded(child: TextField(
+          controller: _tgtFat,
+          decoration: deco(l10n.foodFatG),
+          keyboardType: decimalKb,
+          inputFormatters: numFmt,
+        )),
+      ]),
+      const SizedBox(height: 8),
+      Text(l10n.profileMacroHint,
           style: TextStyle(
               fontSize: 12,
               color: Theme.of(context).colorScheme.onSurfaceVariant)),

@@ -36,15 +36,18 @@ type CreateUserProfileRequest struct {
 }
 
 type UpdateUserProfileRequest struct {
-	Nickname      string      `json:"nickname"`
-	Avatar        string      `json:"avatar"`
-	Gender        models.Gender `json:"gender"`
-	Birthday      *time.Time  `json:"birthday"`
-	Height        float32     `json:"height"`
-	CurrentWeight float32     `json:"current_weight"`
-	TargetWeight  float32     `json:"target_weight"`
-	ActivityLevel int         `json:"activity_level"`
-	TargetCalorie float32     `json:"target_calorie"`
+	Nickname       string        `json:"nickname"`
+	Avatar         string        `json:"avatar"`
+	Gender         models.Gender `json:"gender"`
+	Birthday       *time.Time    `json:"birthday"`
+	Height         float32       `json:"height"`
+	CurrentWeight  float32       `json:"current_weight"`
+	TargetWeight   float32       `json:"target_weight"`
+	ActivityLevel  int           `json:"activity_level"`
+	TargetCalorie  float32       `json:"target_calorie"`
+	TargetProteinG float32       `json:"target_protein_g"`
+	TargetCarbsG   float32       `json:"target_carbs_g"`
+	TargetFatG     float32       `json:"target_fat_g"`
 }
 
 func (s *UserService) CreateProfile(req *CreateUserProfileRequest) (*models.UserProfile, error) {
@@ -131,6 +134,15 @@ func (s *UserService) UpdateProfile(id uint, req *UpdateUserProfileRequest) (*mo
 	}
 	if req.TargetCalorie > 0 {
 		updates["target_calorie"] = req.TargetCalorie
+	}
+	if req.TargetProteinG > 0 {
+		updates["target_protein_g"] = req.TargetProteinG
+	}
+	if req.TargetCarbsG > 0 {
+		updates["target_carbs_g"] = req.TargetCarbsG
+	}
+	if req.TargetFatG > 0 {
+		updates["target_fat_g"] = req.TargetFatG
 	}
 
 	if err := s.db.Model(&profile).Updates(updates).Error; err != nil {

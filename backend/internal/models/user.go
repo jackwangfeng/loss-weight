@@ -27,6 +27,12 @@ type UserProfile struct {
 	TargetWeight    float32        `gorm:"type:decimal(5,2)" json:"target_weight"`
 	ActivityLevel   int            `gorm:"type:int" json:"activity_level"`
 	TargetCalorie   float32        `gorm:"type:decimal(8,2)" json:"target_calorie"`
+	// Macro targets in grams. 0 means "auto-derive from body weight":
+	// protein = weight * 1.8, fat = weight * 0.8, carbs = remainder after protein+fat kcal.
+	// Frontend owns the derivation so we don't bake the formula into storage.
+	TargetProteinG  float32        `gorm:"type:decimal(6,2);default:0" json:"target_protein_g"`
+	TargetCarbsG    float32        `gorm:"type:decimal(6,2);default:0" json:"target_carbs_g"`
+	TargetFatG      float32        `gorm:"type:decimal(6,2);default:0" json:"target_fat_g"`
 	CreatedAt       time.Time      `json:"created_at"`
 	UpdatedAt       time.Time      `json:"updated_at"`
 	DeletedAt       gorm.DeletedAt `gorm:"index" json:"-"`

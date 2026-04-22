@@ -10,6 +10,7 @@ import '../services/food_service.dart';
 import '../services/ai_service.dart';
 import '../models/food_record.dart';
 import '../utils/labels.dart';
+import '../widgets/macro_dashboard_card.dart';
 import '../widgets/voice_input_button.dart';
 
 class FoodScreen extends StatefulWidget {
@@ -120,7 +121,7 @@ class _FoodScreenState extends State<FoodScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
       children: [
-        _TodaySummary(records: todayItems),
+        MacroDashboardCard(todayRecords: todayItems),
         const SizedBox(height: 16),
         if (_records.isEmpty) _buildEmpty(context),
         for (final day in orderedKeys) _DayGroup(
@@ -215,103 +216,6 @@ class _FoodScreenState extends State<FoodScreen> {
         : l10n.foodBudgetOver(eaten.toStringAsFixed(0), (-remaining).toStringAsFixed(0));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(msg), duration: const Duration(seconds: 3)),
-    );
-  }
-}
-
-// ============================================================================
-//  Today's calorie summary card
-// ============================================================================
-
-class _TodaySummary extends StatelessWidget {
-  final List<FoodRecord> records;
-  const _TodaySummary({required this.records});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final l10n = AppLocalizations.of(context);
-    final user = context.watch<UserProvider>().currentUser;
-    final double cal = records.fold(0.0, (s, r) => s + r.calories);
-    final double protein = records.fold(0.0, (s, r) => s + r.protein);
-    final double carbs = records.fold(0.0, (s, r) => s + r.carbohydrates);
-    final double fat = records.fold(0.0, (s, r) => s + r.fat);
-    final double target = user?.targetCalorie ?? 2000.0;
-    final double pct = target > 0 ? (cal / target).clamp(0.0, 1.2) : 0.0;
-    final bool over = target > 0 && cal > target;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(l10n.foodTodayLabel,
-                    style: TextStyle(
-                        fontSize: 11,
-                        letterSpacing: 0.8,
-                        color: scheme.onSurfaceVariant,
-                        fontWeight: FontWeight.w600)),
-                Text(l10n.foodMealCount(records.length),
-                    style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Text(cal.toStringAsFixed(0),
-                    style: TextStyle(
-                      fontSize: 36,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.8,
-                      color: over ? scheme.error : scheme.onSurface,
-                    )),
-                Text(' / ${target.toStringAsFixed(0)} kcal',
-                    style: TextStyle(fontSize: 14, color: scheme.onSurfaceVariant)),
-              ],
-            ),
-            const SizedBox(height: 10),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: LinearProgressIndicator(
-                value: pct > 1.0 ? 1.0 : pct,
-                minHeight: 6,
-                backgroundColor: scheme.surfaceContainerHighest,
-                valueColor: AlwaysStoppedAnimation(over ? scheme.error : scheme.primary),
-              ),
-            ),
-            const SizedBox(height: 14),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _macroBadge(l10n.foodMacroProtein, protein, 'g', const Color(0xFFE38B2A)),
-                _macroBadge(l10n.foodMacroCarbs, carbs, 'g', const Color(0xFF5B9BD5)),
-                _macroBadge(l10n.foodMacroFat, fat, 'g', const Color(0xFFB18CD9)),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _macroBadge(String label, double v, String unit, Color c) {
-    return Column(
-      children: [
-        Text('${v.toStringAsFixed(0)}$unit',
-            style: TextStyle(
-                color: c, fontSize: 16, fontWeight: FontWeight.w600,
-                letterSpacing: -0.2)),
-        const SizedBox(height: 2),
-        Text(label,
-            style: const TextStyle(
-                fontSize: 10, letterSpacing: 0.8, fontWeight: FontWeight.w600)),
-      ],
     );
   }
 }

@@ -95,6 +95,8 @@
   "profileActivityLevel": "Activity level",
   "profileDailyCalorieTargetKcal": "Daily calorie target (kcal)",
   "profileTargetHint": "Rule of thumb: BMR × activity × cut factor (~0.8)",
+  "profileMacroSection": "Macro targets",
+  "profileMacroHint": "Leave blank to auto-derive from body weight (protein = weight × 1.8, fat = weight × 0.8).",
 
   "sexMale": "Male",
   "sexFemale": "Female",
@@ -157,6 +159,38 @@
   "foodMacroProtein": "PROTEIN",
   "foodMacroCarbs": "CARBS",
   "foodMacroFat": "FAT",
+  "foodMacroCal": "CAL",
+  "foodMacroProteinFull": "Protein",
+  "foodMacroCarbsFull": "Carbs",
+  "foodMacroFatFull": "Fat",
+  "foodMacroCalFull": "Calories",
+  "macroValueOfTarget": "{current} / {target} g",
+  "@macroValueOfTarget": {
+    "placeholders": {
+      "current": { "type": "String" },
+      "target": { "type": "String" }
+    }
+  },
+  "macroCalValueOfTarget": "{current} / {target} kcal",
+  "@macroCalValueOfTarget": {
+    "placeholders": {
+      "current": { "type": "String" },
+      "target": { "type": "String" }
+    }
+  },
+  "macroHintNeedProtein": "Need {grams} g protein to hit target",
+  "@macroHintNeedProtein": {
+    "placeholders": { "grams": { "type": "String" } }
+  },
+  "macroHintCalOver": "{kcal} kcal over target",
+  "@macroHintCalOver": {
+    "placeholders": { "kcal": { "type": "String" } }
+  },
+  "macroHintOnTrack": "On track — finish strong",
+  "macroHintCalLeft": "{kcal} kcal left in budget",
+  "@macroHintCalLeft": {
+    "placeholders": { "kcal": { "type": "String" } }
+  },
   "foodDayCalories": "{value} kcal",
   "@foodDayCalories": { "placeholders": { "value": { "type": "String" } } },
   "foodNameRequired": "Enter a food name",

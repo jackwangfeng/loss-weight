@@ -199,7 +199,7 @@ func (s *AIService) buildSystemPrompt(userID uint, threadID, lang string) string
 	sb.WriteString("Give concrete, actionable guidance grounded in the user's actual numbers below. ")
 	sb.WriteString("Skip fluff, skip pep-talk, skip emoji. Use imperial-agnostic metric units (kg / kcal / g).\n\n")
 
-	// [1] Profile
+	// [1] Profile + today's intake vs targets
 	if profile := s.loadUserProfile(userID); profile != nil {
 		sb.WriteString("## User profile\n")
 		if profile.Nickname != "" {
@@ -216,21 +216,24 @@ func (s *AIService) buildSystemPrompt(userID uint, threadID, lang string) string
 			}
 			sb.WriteString("\n")
 		}
-		if profile.TargetCalorie > 0 {
-			sb.WriteString(fmt.Sprintf("- Daily calorie target: %.0f kcal\n", profile.TargetCalorie))
-		}
+
+		targets := deriveMacroTargetsBackend(profile)
+		sb.WriteString(fmt.Sprintf("- Daily targets: %.0f kcal, %.0f g protein, %.0f g carbs, %.0f g fat\n",
+			targets.calorie, targets.protein, targets.carbs, targets.fat))
 
 		if foods := s.loadTodayFood(userID); len(foods) > 0 {
-			sb.WriteString("- Eaten today: ")
+			var totalCal, totalP, totalC, totalF float32
 			parts := make([]string, 0, len(foods))
-			var totalCal float32
 			for _, f := range foods {
 				parts = append(parts, fmt.Sprintf("%s (%.0f kcal)", f.name, f.calories))
 				totalCal += f.calories
+				totalP += f.protein
+				totalC += f.carbs
+				totalF += f.fat
 			}
-			sb.WriteString(strings.Join(parts, ", "))
-			sb.WriteString(fmt.Sprintf(" — total %.0f kcal", totalCal))
-			sb.WriteString("\n")
+			sb.WriteString("- Eaten today: " + strings.Join(parts, ", ") + "\n")
+			sb.WriteString(fmt.Sprintf("- Today's totals: %.0f kcal, %.0f g protein, %.0f g carbs, %.0f g fat\n",
+				totalCal, totalP, totalC, totalF))
 		}
 
 		if trend := s.loadWeightTrend(userID, 7); trend != "" {
@@ -281,6 +284,9 @@ func (s *AIService) loadUserProfile(userID uint) *models.UserProfile {
 type foodLite struct {
 	name     string
 	calories float32
+	protein  float32
+	carbs    float32
+	fat      float32
 }
 
 func (s *AIService) loadTodayFood(userID uint) []foodLite {
@@ -294,7 +300,13 @@ func (s *AIService) loadTodayFood(userID uint) []foodLite {
 	}
 	out := make([]foodLite, 0, len(records))
 	for _, r := range records {
-		out = append(out, foodLite{name: r.FoodName, calories: r.Calories})
+		out = append(out, foodLite{
+			name:     r.FoodName,
+			calories: r.Calories,
+			protein:  r.Protein,
+			carbs:    r.Carbohydrates,
+			fat:      r.Fat,
+		})
 	}
 	return out
 }

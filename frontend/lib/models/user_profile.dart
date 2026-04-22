@@ -13,6 +13,10 @@ class UserProfile {
   final double targetWeight;
   final int activityLevel;
   final double targetCalorie;
+  // Macro targets in grams. 0 = "auto-derive from current weight".
+  final double targetProteinG;
+  final double targetCarbsG;
+  final double targetFatG;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -29,6 +33,9 @@ class UserProfile {
     this.targetWeight = 0,
     this.activityLevel = 1,
     this.targetCalorie = 0,
+    this.targetProteinG = 0,
+    this.targetCarbsG = 0,
+    this.targetFatG = 0,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -47,6 +54,9 @@ class UserProfile {
       targetWeight: (json['target_weight'] ?? 0).toDouble(),
       activityLevel: json['activity_level'] ?? 1,
       targetCalorie: (json['target_calorie'] ?? 0).toDouble(),
+      targetProteinG: (json['target_protein_g'] ?? 0).toDouble(),
+      targetCarbsG: (json['target_carbs_g'] ?? 0).toDouble(),
+      targetFatG: (json['target_fat_g'] ?? 0).toDouble(),
       createdAt: DateTime.parse(json['created_at']),
       updatedAt: DateTime.parse(json['updated_at']),
     );
@@ -66,6 +76,9 @@ class UserProfile {
       'target_weight': targetWeight,
       'activity_level': activityLevel,
       'target_calorie': targetCalorie,
+      'target_protein_g': targetProteinG,
+      'target_carbs_g': targetCarbsG,
+      'target_fat_g': targetFatG,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };

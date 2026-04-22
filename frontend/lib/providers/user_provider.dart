@@ -84,6 +84,9 @@ class UserProvider with ChangeNotifier {
     double? targetWeight,
     int? activityLevel,
     double? targetCalorie,
+    double? targetProteinG,
+    double? targetCarbsG,
+    double? targetFatG,
   }) async {
     if (_currentUser == null) return;
 
@@ -103,6 +106,9 @@ class UserProvider with ChangeNotifier {
         targetWeight: targetWeight,
         activityLevel: activityLevel,
         targetCalorie: targetCalorie,
+        targetProteinG: targetProteinG,
+        targetCarbsG: targetCarbsG,
+        targetFatG: targetFatG,
       );
       _error = null;
     } catch (e) {

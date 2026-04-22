@@ -463,23 +463,65 @@ Rules:
 	return &out, nil
 }
 
+// macroTargets mirrors the frontend's deriveMacroTargets: explicit targets
+// on profile win; otherwise fall back to recomp defaults keyed off weight.
+// Kept in lock-step with lib/utils/macros.dart so the brief prompt and the
+// dashboard widget see the same numbers.
+type macroTargets struct {
+	calorie float32
+	protein float32
+	carbs   float32
+	fat     float32
+}
+
+func deriveMacroTargetsBackend(profile *models.UserProfile) macroTargets {
+	weight := float32(70)
+	calorie := float32(2000)
+	if profile != nil {
+		if profile.CurrentWeight > 0 {
+			weight = profile.CurrentWeight
+		}
+		if profile.TargetCalorie > 0 {
+			calorie = profile.TargetCalorie
+		}
+	}
+	protein := weight * 1.8
+	if profile != nil && profile.TargetProteinG > 0 {
+		protein = profile.TargetProteinG
+	}
+	fat := weight * 0.8
+	if profile != nil && profile.TargetFatG > 0 {
+		fat = profile.TargetFatG
+	}
+	carbs := float32(0)
+	if profile != nil && profile.TargetCarbsG > 0 {
+		carbs = profile.TargetCarbsG
+	}
+	if carbs == 0 {
+		remaining := calorie - protein*4 - fat*9
+		if remaining > 0 {
+			carbs = remaining / 4
+		}
+	}
+	return macroTargets{calorie: calorie, protein: protein, carbs: carbs, fat: fat}
+}
+
 // GetDailyBrief: 组合 profile + 今日饮食 + 今日运动，让 LLM 写一句话今日简报。
 // 这是首页卡片的数据源——让 AI "在场"。
 func (s *AIService) GetDailyBrief(userID uint, locale string) (*DailyBriefResponse, error) {
 	// 1. 拉数据
 	profile := s.loadUserProfile(userID)
-	var target float32
-	if profile != nil && profile.TargetCalorie > 0 {
-		target = profile.TargetCalorie
-	} else {
-		target = 2000 // 兜底默认
-	}
+	targets := deriveMacroTargetsBackend(profile)
+	target := targets.calorie
 
 	// 今日饮食
 	foods := s.loadTodayFood(userID)
-	var eaten float32
+	var eaten, eatenProtein, eatenCarbs, eatenFat float32
 	for _, f := range foods {
 		eaten += f.calories
+		eatenProtein += f.protein
+		eatenCarbs += f.carbs
+		eatenFat += f.fat
 	}
 
 	// 今日运动
@@ -556,6 +598,11 @@ func (s *AIService) GetDailyBrief(userID uint, locale string) (*DailyBriefRespon
 - Burned today: %.0f kcal
 - Remaining: %.0f kcal
 
+## Macros today (eaten / target, grams)
+- Protein: %.0f / %.0f g   (hero metric — protein is non-negotiable for recomp)
+- Carbs:   %.0f / %.0f g
+- Fat:     %.0f / %.0f g
+
 ## Food today
 %s
 
@@ -567,11 +614,15 @@ func (s *AIService) GetDailyBrief(userID uint, locale string) (*DailyBriefRespon
 
 ## Writing requirements
 - ONE short paragraph in %s, 40-80 words (or ~120 characters for Chinese).
-- Open with a quick read of where they stand (on pace / over / under), then ONE concrete next step (specific food for next meal / skip or add a walk / push or relax).
+- Open with a quick read of where they stand (on pace / over / under), then ONE concrete next step — prioritize protein gap if they're under 80%% of target.
+- When suggesting food, name a specific item + grams (e.g. "200g chicken breast = 46g protein"), not vague advice.
 - Respect user constraints and preferences (no dairy if they're lactose intolerant; no running if they hate cardio).
 - No lists, no emoji, no blank lines, no "Hi" / "Hello" opener. Get to the point.`,
 		now.Format("15:04"), mealHint,
 		target, eaten, burned, remaining,
+		eatenProtein, targets.protein,
+		eatenCarbs, targets.carbs,
+		eatenFat, targets.fat,
 		strings.Join(append([]string{"(none)"}, foodLines...), "\n"),
 		strings.Join(append([]string{"(none)"}, exerciseLines...), "\n"),
 		strings.Join(append([]string{"(none recorded yet)"}, factLines...), "\n"),

@@ -255,6 +255,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get profileTargetHint => '估算：BMR × 活动系数 × 减脂系数（约 0.8）';
 
   @override
+  String get profileMacroSection => 'Macro 目标';
+
+  @override
+  String get profileMacroHint => '留空即按体重自动推导（蛋白 = 体重 × 1.8，脂肪 = 体重 × 0.8）';
+
+  @override
   String get sexMale => '男';
 
   @override
@@ -422,6 +428,49 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get foodMacroFat => '脂肪';
+
+  @override
+  String get foodMacroCal => '热量';
+
+  @override
+  String get foodMacroProteinFull => '蛋白';
+
+  @override
+  String get foodMacroCarbsFull => '碳水';
+
+  @override
+  String get foodMacroFatFull => '脂肪';
+
+  @override
+  String get foodMacroCalFull => '热量';
+
+  @override
+  String macroValueOfTarget(String current, String target) {
+    return '$current / $target g';
+  }
+
+  @override
+  String macroCalValueOfTarget(String current, String target) {
+    return '$current / $target kcal';
+  }
+
+  @override
+  String macroHintNeedProtein(String grams) {
+    return '还差 $grams g 蛋白达标';
+  }
+
+  @override
+  String macroHintCalOver(String kcal) {
+    return '超出目标 $kcal kcal';
+  }
+
+  @override
+  String get macroHintOnTrack => '节奏稳——保持到晚餐';
+
+  @override
+  String macroHintCalLeft(String kcal) {
+    return '还剩 $kcal kcal 额度';
+  }
 
   @override
   String foodDayCalories(String value) {
