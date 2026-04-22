@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../l10n/generated/app_localizations.dart';
+import '../providers/locale_provider.dart';
 import '../providers/user_provider.dart';
 import '../services/exercise_service.dart';
 import '../services/ai_service.dart';
@@ -473,7 +474,10 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
     }
     setState(() => _aiLoading = true);
     try {
-      final r = await widget.aiService.estimateExercise(text: text);
+      final r = await widget.aiService.estimateExercise(
+        text: text,
+        locale: effectiveAiLocale(context),
+      );
       _applyEstimate(r);
     } catch (e) {
       if (mounted) {

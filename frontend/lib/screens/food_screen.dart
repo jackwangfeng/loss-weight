@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../l10n/generated/app_localizations.dart';
+import '../providers/locale_provider.dart';
 import '../providers/user_provider.dart';
 import '../services/food_service.dart';
 import '../services/ai_service.dart';
@@ -547,7 +548,10 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
     }
     setState(() => _aiLoading = true);
     try {
-      final r = await widget.aiService.estimateNutrition(text: text);
+      final r = await widget.aiService.estimateNutrition(
+        text: text,
+        locale: effectiveAiLocale(context),
+      );
       _applyEstimate(r);
     } catch (e) {
       if (mounted) {
@@ -578,7 +582,10 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
       final bytes = await img.readAsBytes();
       final mime = img.mimeType ?? 'image/jpeg';
       final dataUrl = 'data:$mime;base64,${base64Encode(bytes)}';
-      final r = await widget.aiService.recognizeFood(imageUrl: dataUrl);
+      final r = await widget.aiService.recognizeFood(
+        imageUrl: dataUrl,
+        locale: effectiveAiLocale(context),
+      );
       _applyEstimate(r);
     } catch (e) {
       if (mounted) {

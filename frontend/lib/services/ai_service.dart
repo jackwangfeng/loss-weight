@@ -9,11 +9,12 @@ import 'sse_client.dart';
 class AIService {
   final ApiService _apiService = ApiService();
 
-  /// AI 聊天
+  /// AI 聊天。`locale` 控制大模型回复语言（'en' / 'zh'）；不传就由后端默认英文。
   Future<AIChatMessage> chat({
     required int userId,
     required String message,
     String? threadId,
+    String? locale,
   }) async {
     final response = await _apiService.post('/ai/chat', {
       'user_id': userId,
@@ -21,12 +22,13 @@ class AIService {
         {'role': 'user', 'content': message},
       ],
       if (threadId != null) 'thread_id': threadId,
+      if (locale != null) 'locale': locale,
     });
 
     if (response.statusCode == 200) {
       return AIChatMessage.fromJson(response.data);
     } else {
-      throw Exception('AI 聊天失败');
+      throw Exception('AI chat failed');
     }
   }
 
@@ -39,6 +41,7 @@ class AIService {
     required int userId,
     required String message,
     String? threadId,
+    String? locale,
   }) async* {
     final client = createStreamingClient();
     try {
@@ -55,6 +58,7 @@ class AIService {
           {'role': 'user', 'content': message},
         ],
         if (threadId != null) 'thread_id': threadId,
+        if (locale != null) 'locale': locale,
       });
 
       final resp = await client.send(req);
@@ -163,54 +167,68 @@ class AIService {
   /// 返回：{food_name, calories, protein, carbohydrates, fat, fiber, confidence}
   Future<Map<String, dynamic>> recognizeFood({
     required String imageUrl,
+    String? locale,
   }) async {
     final response = await _apiService.post('/ai/recognize', {
       'image_url': imageUrl,
+      if (locale != null) 'locale': locale,
     });
 
     if (response.statusCode == 200) {
       return response.data;
     } else {
-      throw Exception('食物识别失败');
+      throw Exception('Food recognition failed');
     }
   }
 
-  /// 文本估算营养素（例："一碗米饭 200g"、"宫保鸡丁一份"）
-  /// 返回：{food_name, calories, protein, carbohydrates, fat, fiber, confidence}
-  Future<Map<String, dynamic>> estimateNutrition({required String text}) async {
+  /// Text-based nutrition estimate.
+  /// Returns: {food_name, calories, protein, carbohydrates, fat, fiber, confidence}
+  Future<Map<String, dynamic>> estimateNutrition({
+    required String text,
+    String? locale,
+  }) async {
     final response = await _apiService.post('/ai/estimate-nutrition', {
       'text': text,
+      if (locale != null) 'locale': locale,
     });
     if (response.statusCode == 200) {
       return response.data;
     } else {
-      throw Exception('营养估算失败');
+      throw Exception('Nutrition estimate failed');
     }
   }
 
-  /// 文本估算运动消耗（例："跑步 5 公里 30 分钟"、"瑜伽一小时"）
-  /// 返回：{type, duration_min, intensity, calories_burned, distance, confidence}
-  Future<Map<String, dynamic>> estimateExercise({required String text}) async {
+  /// Text-based exercise estimate.
+  /// Returns: {type, duration_min, intensity, calories_burned, distance, confidence}
+  Future<Map<String, dynamic>> estimateExercise({
+    required String text,
+    String? locale,
+  }) async {
     final response = await _apiService.post('/ai/estimate-exercise', {
       'text': text,
+      if (locale != null) 'locale': locale,
     });
     if (response.statusCode == 200) {
       return response.data;
     } else {
-      throw Exception('运动消耗估算失败');
+      throw Exception('Exercise estimate failed');
     }
   }
 
-  /// 解析体重自然文本（例："68.5kg"、"体脂 22%"、"今天早 67.8"）
-  /// 返回：{weight, body_fat, muscle, water, note, confidence}
-  Future<Map<String, dynamic>> parseWeight({required String text}) async {
+  /// Parse natural-language weight input.
+  /// Returns: {weight, body_fat, muscle, water, note, confidence}
+  Future<Map<String, dynamic>> parseWeight({
+    required String text,
+    String? locale,
+  }) async {
     final response = await _apiService.post('/ai/parse-weight', {
       'text': text,
+      if (locale != null) 'locale': locale,
     });
     if (response.statusCode == 200) {
       return response.data;
     } else {
-      throw Exception('体重解析失败');
+      throw Exception('Weight parse failed');
     }
   }
 
@@ -232,14 +250,18 @@ class AIService {
   /// 今日 AI 简报：用于首页顶部卡片
   /// 返回：{target_calories, calories_eaten, calories_burned, calories_remaining,
   ///        meals_logged, exercises_logged, brief}
-  Future<Map<String, dynamic>> getDailyBrief({required int userId}) async {
+  Future<Map<String, dynamic>> getDailyBrief({
+    required int userId,
+    String? locale,
+  }) async {
     final response = await _apiService.post('/ai/daily-brief', {
       'user_id': userId,
+      if (locale != null) 'locale': locale,
     });
     if (response.statusCode == 200) {
       return response.data;
     } else {
-      throw Exception('获取简报失败');
+      throw Exception('Failed to fetch brief');
     }
   }
 

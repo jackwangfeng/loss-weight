@@ -191,7 +191,9 @@ func (s *AIService) searchRelevantMessages(
 // ---- System Prompt 组装 -----------------------------------------------------
 
 // buildSystemPrompt assembles {user profile + long-term memory + thread summary}.
-func (s *AIService) buildSystemPrompt(userID uint, threadID string) string {
+// `lang` is the target language name (e.g. "English", "Simplified Chinese");
+// passed via `languageName(req.Locale)` from the chat handler.
+func (s *AIService) buildSystemPrompt(userID uint, threadID, lang string) string {
 	var sb strings.Builder
 	sb.WriteString("You are CutBro, a direct, data-driven AI cutting coach for men who lift. ")
 	sb.WriteString("Give concrete, actionable guidance grounded in the user's actual numbers below. ")
@@ -254,7 +256,7 @@ func (s *AIService) buildSystemPrompt(userID uint, threadID string) string {
 		sb.WriteString("\n\n")
 	}
 
-	sb.WriteString("Reply in English. Be specific. Name the number, the food, or the protocol — never vague advice.")
+	sb.WriteString(fmt.Sprintf("Reply in %s. Be specific. Name the number, the food, or the protocol — never vague advice.", lang))
 	return sb.String()
 }
 
@@ -414,7 +416,7 @@ func (s *AIService) extractFactsAsync(userID uint, threadID string) {
 Return a JSON array ONLY — no markdown fence, no prose. Each item:
 {
   "category": "preference | constraint | goal | routine | history",
-  "fact": "one concise English sentence, objective and specific",
+  "fact": "one concise sentence in the same language as the conversation, objective and specific",
   "confidence": 0.0-1.0
 }
 

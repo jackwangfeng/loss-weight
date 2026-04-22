@@ -48,7 +48,7 @@ func (h *AIHandler) ParseWeight(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	result, err := h.service.ParseWeightFromText(req.Text)
+	result, err := h.service.ParseWeightFromText(req.Text, req.Locale)
 	if err != nil {
 		h.logger.Error("parse weight failed", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "体重解析失败"})
@@ -63,7 +63,7 @@ func (h *AIHandler) EstimateExercise(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	result, err := h.service.EstimateExerciseFromText(req.Text)
+	result, err := h.service.EstimateExerciseFromText(req.Text, req.Locale)
 	if err != nil {
 		h.logger.Error("estimate exercise failed", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "运动消耗估算失败"})
@@ -78,7 +78,7 @@ func (h *AIHandler) GetDailyBrief(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	result, err := h.service.GetDailyBrief(req.UserID)
+	result, err := h.service.GetDailyBrief(req.UserID, req.Locale)
 	if err != nil {
 		h.logger.Error("daily brief failed", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成简报失败"})
@@ -93,7 +93,7 @@ func (h *AIHandler) EstimateNutrition(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	result, err := h.service.EstimateNutritionFromText(req.Text)
+	result, err := h.service.EstimateNutritionFromText(req.Text, req.Locale)
 	if err != nil {
 		h.logger.Error("estimate nutrition failed", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "营养素估算失败"})

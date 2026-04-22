@@ -666,4 +666,26 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get voiceTapToStop => 'Tap to stop';
+
+  @override
+  String get settingsTitle => 'Settings';
+
+  @override
+  String get settingsLanguage => 'Language';
+
+  @override
+  String get settingsLanguageDescription =>
+      'Controls both the UI and your AI coach\'s reply language.';
+
+  @override
+  String get settingsLanguageSystem => 'System default';
+
+  @override
+  String get settingsLanguageEnglish => 'English';
+
+  @override
+  String get settingsLanguageChinese => '简体中文';
+
+  @override
+  String get profileSettings => 'Settings';
 }

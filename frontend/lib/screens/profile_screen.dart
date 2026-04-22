@@ -7,6 +7,7 @@ import '../providers/user_provider.dart';
 import '../models/user_profile.dart';
 import '../utils/labels.dart';
 import 'login_screen.dart';
+import 'settings_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -102,6 +103,17 @@ class ProfileScreen extends StatelessWidget {
                   ? '—'
                   : '${user.targetCalorie.toStringAsFixed(0)} kcal'),
             ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.settings_outlined),
+            title: Text(l10n.profileSettings),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
           ),
         ),
         const SizedBox(height: 16),

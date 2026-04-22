@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../l10n/generated/app_localizations.dart';
+import '../providers/locale_provider.dart';
 import '../providers/user_provider.dart';
 import '../services/weight_service.dart';
 import '../services/ai_service.dart';
@@ -482,7 +483,10 @@ class _AddWeightSheetState extends State<_AddWeightSheet> {
     }
     setState(() => _aiLoading = true);
     try {
-      final r = await widget.aiService.parseWeight(text: text);
+      final r = await widget.aiService.parseWeight(
+        text: text,
+        locale: effectiveAiLocale(context),
+      );
       _apply(r);
     } catch (e) {
       if (mounted) {

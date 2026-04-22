@@ -57,8 +57,29 @@ func NewAIService(db *gorm.DB, logger *zap.Logger, llmAPIKey, llmAPIURL, visionA
 	}
 }
 
+// languageName maps a locale code (en / zh / ...) to the full English
+// language name we feed into LLM prompts. Keep it small and explicit;
+// unknown codes fall back to English so the backend never refuses a request.
+func languageName(locale string) string {
+	switch locale {
+	case "zh", "zh-CN", "zh-Hans":
+		return "Simplified Chinese"
+	case "zh-TW", "zh-Hant":
+		return "Traditional Chinese"
+	case "ja":
+		return "Japanese"
+	case "es":
+		return "Spanish"
+	case "", "en", "en-US", "en-GB":
+		fallthrough
+	default:
+		return "English"
+	}
+}
+
 type RecognizeFoodRequest struct {
 	ImageURL string `json:"image_url" binding:"required"`
+	Locale   string `json:"locale"`
 }
 
 type RecognizeFoodResponse struct {
@@ -72,11 +93,13 @@ type RecognizeFoodResponse struct {
 }
 
 type EstimateNutritionRequest struct {
-	Text string `json:"text" binding:"required"`
+	Text   string `json:"text" binding:"required"`
+	Locale string `json:"locale"`
 }
 
 type ParseWeightRequest struct {
-	Text string `json:"text" binding:"required"`
+	Text   string `json:"text" binding:"required"`
+	Locale string `json:"locale"`
 }
 
 type ParseWeightResponse struct {
@@ -89,7 +112,8 @@ type ParseWeightResponse struct {
 }
 
 type EstimateExerciseRequest struct {
-	Text string `json:"text" binding:"required"`
+	Text   string `json:"text" binding:"required"`
+	Locale string `json:"locale"`
 }
 
 type EstimateExerciseResponse struct {
@@ -102,7 +126,8 @@ type EstimateExerciseResponse struct {
 }
 
 type DailyBriefRequest struct {
-	UserID uint `json:"user_id" binding:"required"`
+	UserID uint   `json:"user_id" binding:"required"`
+	Locale string `json:"locale"`
 }
 
 type DailyBriefResponse struct {
@@ -117,12 +142,13 @@ type DailyBriefResponse struct {
 }
 
 type GetEncouragementRequest struct {
-	UserID        uint    `json:"user_id" binding:"required"`
-	CurrentWeight float32 `json:"current_weight"`
-	TargetWeight  float32 `json:"target_weight"`
-	WeightLoss    float32 `json:"weight_loss"`
-	DaysActive    int     `json:"days_active"`
+	UserID        uint     `json:"user_id" binding:"required"`
+	CurrentWeight float32  `json:"current_weight"`
+	TargetWeight  float32  `json:"target_weight"`
+	WeightLoss    float32  `json:"weight_loss"`
+	DaysActive    int      `json:"days_active"`
 	Achievements  []string `json:"achievements"`
+	Locale        string   `json:"locale"`
 }
 
 type GetEncouragementResponse struct {
@@ -136,9 +162,10 @@ type ChatMessage struct {
 }
 
 type ChatRequest struct {
-	UserID     uint          `json:"user_id" binding:"required"`
-	Messages   []ChatMessage `json:"messages" binding:"required"`
-	ThreadID   string        `json:"thread_id"`
+	UserID   uint          `json:"user_id" binding:"required"`
+	Messages []ChatMessage `json:"messages" binding:"required"`
+	ThreadID string        `json:"thread_id"`
+	Locale   string        `json:"locale"`
 }
 
 type ChatResponse struct {
@@ -183,16 +210,17 @@ func (s *AIService) RecognizeFood(req *RecognizeFoodRequest) (*RecognizeFoodResp
 		return nil, fmt.Errorf("failed to fetch image: %w", err)
 	}
 
-	prompt := `Analyze this food photo and return the information below. JSON ONLY — no markdown fence, no prose.
+	lang := languageName(req.Locale)
+	prompt := fmt.Sprintf(`Analyze this food photo and return the information below. JSON ONLY — no markdown fence, no prose.
 {
-  "food_name": "short English name of the dish",
+  "food_name": "short name of the dish in %s",
   "calories": integer kcal per 100 g,
   "protein": grams of protein per 100 g,
   "carbohydrates": grams of carbs per 100 g,
   "fat": grams of fat per 100 g,
   "fiber": grams of fiber per 100 g,
   "confidence": 0.0-1.0
-}`
+}`, lang)
 
 	payload := map[string]interface{}{
 		"contents": []map[string]interface{}{
@@ -305,7 +333,7 @@ func (s *AIService) RecognizeFood(req *RecognizeFoodRequest) (*RecognizeFoodResp
 
 // EstimateNutritionFromText: 用 Gemini 根据纯文本描述估算营养素。
 // 例：「一碗米饭 200g」「宫保鸡丁一份」「全麦面包两片配一杯豆浆」
-func (s *AIService) EstimateNutritionFromText(text string) (*RecognizeFoodResponse, error) {
+func (s *AIService) EstimateNutritionFromText(text, locale string) (*RecognizeFoodResponse, error) {
 	if s.llmAPIKey == "" {
 		if !s.allowMock {
 			return nil, errLLMNotConfigured
@@ -323,7 +351,7 @@ Description: %s
 
 JSON schema:
 {
-  "food_name": "short English name of the dish",
+  "food_name": "short name of the dish in %s",
   "calories": total kcal,
   "protein": grams of protein,
   "carbohydrates": grams of carbs,
@@ -335,7 +363,7 @@ JSON schema:
 Rules:
 - If the description gives a concrete portion (e.g. "200g", "1 cup"), compute the total for that portion; otherwise estimate one standard serving.
 - Numbers without units.
-- Higher confidence when the description is concrete; lower when it's vague.`, text)
+- Higher confidence when the description is concrete; lower when it's vague.`, text, languageName(locale))
 
 	resp, err := s.callLLM([]ChatMessage{{Role: "user", Content: prompt}})
 	if err != nil {
@@ -351,7 +379,7 @@ Rules:
 
 // ParseWeightFromText: 把自然语言（例："68.5kg 体脂 22%"、"今天 67.8"、"早 68 晚 67.5"）
 // 解析出结构化体重信息。体重本身简单，但希望形态一致（都走 AI 解析）。
-func (s *AIService) ParseWeightFromText(text string) (*ParseWeightResponse, error) {
+func (s *AIService) ParseWeightFromText(text, locale string) (*ParseWeightResponse, error) {
 	if s.llmAPIKey == "" {
 		if !s.allowMock {
 			return nil, errLLMNotConfigured
@@ -370,14 +398,14 @@ JSON schema:
   "body_fat": body fat percentage (0 if none),
   "muscle": muscle mass in kg (0 if none),
   "water": water percentage (0 if none),
-  "note": "short note if the text mentions context (e.g. 'morning', 'post-workout'), max 20 chars; else empty",
+  "note": "short note in %s if the text mentions context (e.g. 'morning', 'post-workout'), max 20 chars; else empty",
   "confidence": 0.0-1.0
 }
 
 Rules:
 - Numbers without units.
 - If there's a single weight number, populate "weight".
-- If multiple measurements appear, take the last/most recent one.`, text)
+- If multiple measurements appear, take the last/most recent one.`, text, languageName(locale))
 
 	resp, err := s.callLLM([]ChatMessage{{Role: "user", Content: prompt}})
 	if err != nil {
@@ -393,7 +421,7 @@ Rules:
 
 // EstimateExerciseFromText: 用 Gemini 估算运动类型 + 时长 + 消耗
 // 例："跑步 5 公里 30 分钟"、"力量训练 45 分钟"、"走路一小时"
-func (s *AIService) EstimateExerciseFromText(text string) (*EstimateExerciseResponse, error) {
+func (s *AIService) EstimateExerciseFromText(text, locale string) (*EstimateExerciseResponse, error) {
 	if s.llmAPIKey == "" {
 		if !s.allowMock {
 			return nil, errLLMNotConfigured
@@ -410,7 +438,7 @@ Description: %s
 
 JSON schema:
 {
-  "type": "short English activity name (running / cycling / lifting / yoga / swimming / walking / HIIT / tennis / ...)",
+  "type": "short activity name in %s (running / cycling / lifting / yoga / swimming / walking / HIIT / tennis / ...)",
   "duration_min": integer minutes,
   "intensity": "low | medium | high",
   "calories_burned": integer kcal,
@@ -421,7 +449,7 @@ JSON schema:
 Rules:
 - Assume a 70 kg adult man for baseline burn.
 - "walk / light / stretch" → low; standard cardio / moderate lifting → medium; "HIIT / sprint / heavy lifting" → high.
-- Keep "type" short and canonical (single word or short phrase).`, text)
+- Keep "type" short and canonical (single word or short phrase).`, text, languageName(locale))
 
 	resp, err := s.callLLM([]ChatMessage{{Role: "user", Content: prompt}})
 	if err != nil {
@@ -437,7 +465,7 @@ Rules:
 
 // GetDailyBrief: 组合 profile + 今日饮食 + 今日运动，让 LLM 写一句话今日简报。
 // 这是首页卡片的数据源——让 AI "在场"。
-func (s *AIService) GetDailyBrief(userID uint) (*DailyBriefResponse, error) {
+func (s *AIService) GetDailyBrief(userID uint, locale string) (*DailyBriefResponse, error) {
 	// 1. 拉数据
 	profile := s.loadUserProfile(userID)
 	var target float32
@@ -538,7 +566,7 @@ func (s *AIService) GetDailyBrief(userID uint) (*DailyBriefResponse, error) {
 %s
 
 ## Writing requirements
-- ONE short English paragraph, 40-80 words.
+- ONE short paragraph in %s, 40-80 words (or ~120 characters for Chinese).
 - Open with a quick read of where they stand (on pace / over / under), then ONE concrete next step (specific food for next meal / skip or add a walk / push or relax).
 - Respect user constraints and preferences (no dairy if they're lactose intolerant; no running if they hate cardio).
 - No lists, no emoji, no blank lines, no "Hi" / "Hello" opener. Get to the point.`,
@@ -547,6 +575,7 @@ func (s *AIService) GetDailyBrief(userID uint) (*DailyBriefResponse, error) {
 		strings.Join(append([]string{"(none)"}, foodLines...), "\n"),
 		strings.Join(append([]string{"(none)"}, exerciseLines...), "\n"),
 		strings.Join(append([]string{"(none recorded yet)"}, factLines...), "\n"),
+		languageName(locale),
 	)
 
 	resp, err := s.callLLM([]ChatMessage{{Role: "user", Content: prompt}})
@@ -570,12 +599,13 @@ Status:
 - Days active: %d
 - Milestones: %v
 
-Write ONE paragraph, 40-80 English words. Name the numbers, acknowledge the delta, point forward. No bullet list, no preamble.`,
+Write ONE paragraph in %s, 40-80 words (or ~120 characters for Chinese). Name the numbers, acknowledge the delta, point forward. No bullet list, no preamble.`,
 		req.CurrentWeight,
 		req.TargetWeight,
 		req.WeightLoss,
 		req.DaysActive,
 		req.Achievements,
+		languageName(req.Locale),
 	)
 
 	if s.llmAPIKey == "" {
@@ -649,7 +679,7 @@ func (s *AIService) Chat(req *ChatRequest) (*ChatResponse, error) {
 	}
 
 	// [3] 组装完整上下文
-	messages, err := s.assembleChatMessages(req.UserID, req.ThreadID, last.Content)
+	messages, err := s.assembleChatMessages(req.UserID, req.ThreadID, last.Content, languageName(req.Locale))
 	if err != nil {
 		s.logger.Error("assemble chat context failed", zap.Error(err))
 		return nil, err
@@ -692,10 +722,12 @@ func (s *AIService) saveAssistantReply(userID uint, threadID, content string) (*
 	}, nil
 }
 
-// assembleChatMessages: 把记忆的各层拼成给 LLM 的 messages 数组。
-func (s *AIService) assembleChatMessages(userID uint, threadID, query string) ([]ChatMessage, error) {
+// assembleChatMessages: assembles the layered memory context into the
+// messages array sent to the LLM. `lang` is the target language name
+// (English / Simplified Chinese / ...) that the system prompt forces.
+func (s *AIService) assembleChatMessages(userID uint, threadID, query, lang string) ([]ChatMessage, error) {
 	messages := []ChatMessage{
-		{Role: "system", Content: s.buildSystemPrompt(userID, threadID)},
+		{Role: "system", Content: s.buildSystemPrompt(userID, threadID, lang)},
 	}
 
 	// 滑窗（含刚插入的 user 消息，要剔除——我们自己会把 query 放在末尾）
@@ -995,7 +1027,7 @@ func (s *AIService) ChatStream(ctx context.Context, req *ChatRequest) (<-chan St
 		return out, nil
 	}
 
-	messages, err := s.assembleChatMessages(req.UserID, req.ThreadID, last.Content)
+	messages, err := s.assembleChatMessages(req.UserID, req.ThreadID, last.Content, languageName(req.Locale))
 	if err != nil {
 		return nil, err
 	}

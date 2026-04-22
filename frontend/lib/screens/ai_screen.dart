@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../providers/auth_provider.dart';
+import '../providers/locale_provider.dart';
 import '../providers/user_provider.dart';
 import '../services/ai_service.dart';
 import '../models/ai_chat.dart';
@@ -121,7 +122,10 @@ class _AISScreenState extends State<AIScreen> {
 
   Future<void> _injectGreeting(int userId) async {
     try {
-      final brief = await _aiService.getDailyBrief(userId: userId);
+      final brief = await _aiService.getDailyBrief(
+        userId: userId,
+        locale: effectiveAiLocale(context),
+      );
       final text = (brief['brief'] ?? '').toString();
       if (text.isEmpty || !mounted) return;
       setState(() {
@@ -234,6 +238,7 @@ class _AISScreenState extends State<AIScreen> {
         userId: userId,
         message: message,
         threadId: _currentThread!.id.toString(),
+        locale: effectiveAiLocale(context),
       )) {
         final err = chunk['error'] as String?;
         if (err != null && err.isNotEmpty) {

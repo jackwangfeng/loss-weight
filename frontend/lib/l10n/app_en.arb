@@ -265,5 +265,13 @@
   "voiceNotAvailable": "Voice input not available",
   "voicePermissionDenied": "Microphone permission denied",
   "voiceTapToSpeak": "Tap to speak",
-  "voiceTapToStop": "Tap to stop"
+  "voiceTapToStop": "Tap to stop",
+
+  "settingsTitle": "Settings",
+  "settingsLanguage": "Language",
+  "settingsLanguageDescription": "Controls both the UI and your AI coach's reply language.",
+  "settingsLanguageSystem": "System default",
+  "settingsLanguageEnglish": "English",
+  "settingsLanguageChinese": "简体中文",
+  "profileSettings": "Settings"
 }

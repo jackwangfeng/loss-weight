@@ -3,6 +3,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../providers/auth_provider.dart';
+import '../providers/locale_provider.dart';
 import '../providers/user_provider.dart';
 import '../screens/login_screen.dart';
 import '../utils/labels.dart';
@@ -251,7 +252,10 @@ class _DailyBriefCardState extends State<_DailyBriefCard> {
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
     try {
-      _data = await _ai.getDailyBrief(userId: widget.userId);
+      _data = await _ai.getDailyBrief(
+        userId: widget.userId,
+        locale: effectiveAiLocale(context),
+      );
     } catch (e) {
       _error = e.toString();
     } finally {

@@ -4,11 +4,12 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'l10n/generated/app_localizations.dart';
+import 'providers/locale_provider.dart';
 import 'providers/user_provider.dart';
 import 'providers/auth_provider.dart';
 import 'screens/home_screen.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
@@ -19,11 +20,14 @@ void main() {
   if (kIsWeb) {
     SemanticsBinding.instance.ensureSemantics();
   }
-  runApp(const CutBroApp());
+  final localeProvider = LocaleProvider();
+  await localeProvider.load();
+  runApp(CutBroApp(localeProvider: localeProvider));
 }
 
 class CutBroApp extends StatelessWidget {
-  const CutBroApp({Key? key}) : super(key: key);
+  final LocaleProvider localeProvider;
+  const CutBroApp({Key? key, required this.localeProvider}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -31,16 +35,20 @@ class CutBroApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => UserProvider()),
+        ChangeNotifierProvider<LocaleProvider>.value(value: localeProvider),
       ],
-      child: MaterialApp(
-        onGenerateTitle: (ctx) => AppLocalizations.of(ctx).appTitle,
-        debugShowCheckedModeBanner: false,
-        themeMode: ThemeMode.dark,
-        darkTheme: _buildTheme(),
-        theme: _buildTheme(),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: const HomeScreen(),
+      child: Consumer<LocaleProvider>(
+        builder: (context, locale, _) => MaterialApp(
+          onGenerateTitle: (ctx) => AppLocalizations.of(ctx).appTitle,
+          debugShowCheckedModeBanner: false,
+          themeMode: ThemeMode.dark,
+          darkTheme: _buildTheme(),
+          theme: _buildTheme(),
+          locale: locale.locale, // null = follow system
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const HomeScreen(),
+        ),
       ),
     );
   }
