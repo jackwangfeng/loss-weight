@@ -16,7 +16,8 @@ type AIChatMessage struct {
 	ThreadID  string         `gorm:"size:64;index" json:"thread_id"`
 	// Embedding: 768-dim float32 向量的小端二进制形式（3072 字节）。
 	// 异步写入，后端 RAG 检索用；前端不需要看，json tag "-"。
-	Embedding []byte         `gorm:"type:blob" json:"-"`
+	// 不写死 type：SQLite 默认 blob、Postgres 默认 bytea，让 GORM 按方言选。
+	Embedding []byte         `json:"-"`
 	CreatedAt time.Time      `json:"created_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }

@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class ApiService {
   static final ApiService _instance = ApiService._internal();
@@ -6,8 +7,19 @@ class ApiService {
   ApiService._internal();
 
   final Dio _dio = Dio();
-  String _baseUrl = 'http://localhost:8000/v1';
+  String _baseUrl = _defaultBaseUrl();
   String? _token;
+
+  // Web 跟随页面 origin（手机从 LAN IP 访问时 localhost 指向手机自己，会全挂）。
+  static String _defaultBaseUrl() {
+    if (kIsWeb) {
+      final base = Uri.base;
+      if (base.host.isNotEmpty) {
+        return '${base.scheme}://${base.host}:8000/v1';
+      }
+    }
+    return 'http://localhost:8000/v1';
+  }
 
   String get baseUrl => _baseUrl;
   set baseUrl(String value) => _baseUrl = value;

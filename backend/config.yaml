@@ -2,7 +2,7 @@ project_name: loss-weight-backend
 version: 1.0.0
 port: 8000
 debug: true
-database_url: postgresql://postgres:postgres@localhost:5432/lossweight?sslmode=disable
+database_url: postgresql://postgres:postgres@localhost:5434/lossweight?sslmode=disable
 redis_url: redis://localhost:6379/0
 secret_key: your-secret-key-change-in-production
 log_level: debug
