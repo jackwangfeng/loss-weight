@@ -205,6 +205,16 @@ func (s *AIService) buildSystemPrompt(userID uint, threadID, lang string) string
 		if profile.Nickname != "" {
 			sb.WriteString(fmt.Sprintf("- Name: %s\n", profile.Nickname))
 		}
+		if profile.Gender != "" {
+			sb.WriteString(fmt.Sprintf("- Sex: %s\n", profile.Gender))
+		}
+		if profile.Birthday != nil && !profile.Birthday.IsZero() {
+			// Integer age, leap-year-naive (who cares for coaching context).
+			age := int(time.Since(*profile.Birthday).Hours() / 24 / 365.25)
+			if age > 0 && age < 120 {
+				sb.WriteString(fmt.Sprintf("- Age: %d\n", age))
+			}
+		}
 		if profile.Height > 0 {
 			sb.WriteString(fmt.Sprintf("- Height: %.1f cm\n", profile.Height))
 		}
@@ -215,6 +225,13 @@ func (s *AIService) buildSystemPrompt(userID uint, threadID, lang string) string
 					profile.TargetWeight, profile.CurrentWeight-profile.TargetWeight))
 			}
 			sb.WriteString("\n")
+		}
+		if profile.ActivityLevel >= 1 && profile.ActivityLevel <= 5 {
+			levels := map[int]string{
+				1: "sedentary", 2: "light", 3: "moderate",
+				4: "active", 5: "very active",
+			}
+			sb.WriteString(fmt.Sprintf("- Activity: %s\n", levels[profile.ActivityLevel]))
 		}
 
 		targets := deriveMacroTargetsBackend(profile)
