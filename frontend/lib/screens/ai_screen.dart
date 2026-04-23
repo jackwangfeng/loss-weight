@@ -30,7 +30,10 @@ class _AISScreenState extends State<AIScreen> {
   @override
   void initState() {
     super.initState();
-    _loadOrCreateThread();
+    // `AppLocalizations.of(context)` is an inherited-widget lookup — illegal
+    // during initState. Defer to the first frame so didChangeDependencies has
+    // run and the Localizations scope is reachable.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadOrCreateThread());
   }
 
   @override

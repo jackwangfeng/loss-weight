@@ -26,8 +26,7 @@ dependencies:
   # Network
   dio: ^5.4.0
   http: ^1.1.0
-  connectivity_plus: ^5.0.2
-  
+
   # Local Storage
   hive: ^2.2.3
   hive_flutter: ^1.1.0

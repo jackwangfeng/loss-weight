@@ -51,6 +51,8 @@
 	<string>用于选择食物、体重秤照片，交给 AI 识别。</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>用于语音输入食物和体重等快速记录。</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>用于把语音输入转成文字，填进食物和体重等记录。</string>
 	<key>GIDClientID</key>
 	<string>604310975641-kbbf1h3r3v5q81fljqdev4r9lqeoplip.apps.googleusercontent.com</string>
 	<key>CFBundleURLTypes</key>
