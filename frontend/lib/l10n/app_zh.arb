@@ -236,5 +236,9 @@
   "settingsLanguageSystem": "跟随系统",
   "settingsLanguageEnglish": "English",
   "settingsLanguageChinese": "简体中文",
+  "settingsAppearance": "外观",
+  "settingsAppearanceDescription": "选择界面的深浅层级。",
+  "settingsThemeDark": "深黑",
+  "settingsThemeMedium": "柔和深色",
   "profileSettings": "设置"
 }

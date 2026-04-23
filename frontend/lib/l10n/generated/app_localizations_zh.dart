@@ -728,5 +728,17 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsLanguageChinese => '简体中文';
 
   @override
+  String get settingsAppearance => '外观';
+
+  @override
+  String get settingsAppearanceDescription => '选择界面的深浅层级。';
+
+  @override
+  String get settingsThemeDark => '深黑';
+
+  @override
+  String get settingsThemeMedium => '柔和深色';
+
+  @override
   String get profileSettings => '设置';
 }

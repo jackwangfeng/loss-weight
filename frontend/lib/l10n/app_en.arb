@@ -307,5 +307,9 @@
   "settingsLanguageSystem": "System default",
   "settingsLanguageEnglish": "English",
   "settingsLanguageChinese": "简体中文",
+  "settingsAppearance": "Appearance",
+  "settingsAppearanceDescription": "Choose how dark the interface surfaces are.",
+  "settingsThemeDark": "Dark",
+  "settingsThemeMedium": "Graphite",
   "profileSettings": "Settings"
 }

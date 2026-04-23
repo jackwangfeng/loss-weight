@@ -45,8 +45,13 @@ iOS submission plan: `APPSTORE_CHECKLIST.md`.
 
 ## UI conventions
 
-- **Dark only**. `ThemeMode.dark`, no light theme. Brand color `#E53935`
-  (accent red). Surfaces `#000000 / #0E0E10 / #1A1A1D`.
+- **Dark-mode variants only** (for now). Two user-selectable palettes, both
+  `Brightness.dark`: `dark` (AMOLED black `#000000 / #0E0E10 / #1A1A1D`) and
+  `medium` / "graphite" (softer `#1A1A1C / #26262A / #32323A`). Picker lives
+  in Settings → Appearance. No true light theme — text is always light on
+  dark surfaces. Brand color `#E53935` (accent red) across both variants.
+  Palettes live in `lib/main.dart`; preference persisted via `ThemeProvider`
+  under prefs key `app.theme`.
 - **No emoji** in UI copy, AI output, logs the user might see, or commit
   messages. The AI system prompt explicitly says "no emoji".
 - **i18n via `flutter_localizations`** (`lib/l10n/app_en.arb` + `app_zh.arb`).
@@ -167,8 +172,9 @@ silently.
   explicitly warns against engineer's完美主义 rabbit holes.
 - Don't add free-tier AI usage without a quota — Gemini vision calls run
   ~$0.03 / photo and a heavy free user can cost $1+/day.
-- Don't reintroduce a light theme, emoji in prompts, pep-talk tone, or
-  imperial units.
+- Don't reintroduce a true light theme (light text on dark is a hard
+  constraint — `medium` variant is still Brightness.dark), emoji in
+  prompts, pep-talk tone, or imperial units.
 - Don't modify `STRATEGY_PIVOT.txt` — it's the human's working doc,
   updated only when they ask.
 - Don't `flutter build web` just to test syntax — use `flutter analyze`,

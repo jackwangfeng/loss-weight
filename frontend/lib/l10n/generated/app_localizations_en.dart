@@ -737,5 +737,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsLanguageChinese => '简体中文';
 
   @override
+  String get settingsAppearance => 'Appearance';
+
+  @override
+  String get settingsAppearanceDescription =>
+      'Choose how dark the interface surfaces are.';
+
+  @override
+  String get settingsThemeDark => 'Dark';
+
+  @override
+  String get settingsThemeMedium => 'Graphite';
+
+  @override
   String get profileSettings => 'Settings';
 }

@@ -5,29 +5,33 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'l10n/generated/app_localizations.dart';
 import 'providers/locale_provider.dart';
+import 'providers/theme_provider.dart';
 import 'providers/user_provider.dart';
 import 'providers/auth_provider.dart';
 import 'screens/home_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.light,
-    systemNavigationBarColor: Color(0xFF000000),
-    systemNavigationBarIconBrightness: Brightness.light,
-  ));
   if (kIsWeb) {
     SemanticsBinding.instance.ensureSemantics();
   }
   final localeProvider = LocaleProvider();
-  await localeProvider.load();
-  runApp(RecompDailyApp(localeProvider: localeProvider));
+  final themeProvider = ThemeProvider();
+  await Future.wait([localeProvider.load(), themeProvider.load()]);
+  runApp(RecompDailyApp(
+    localeProvider: localeProvider,
+    themeProvider: themeProvider,
+  ));
 }
 
 class RecompDailyApp extends StatelessWidget {
   final LocaleProvider localeProvider;
-  const RecompDailyApp({Key? key, required this.localeProvider}) : super(key: key);
+  final ThemeProvider themeProvider;
+  const RecompDailyApp({
+    Key? key,
+    required this.localeProvider,
+    required this.themeProvider,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -36,184 +40,232 @@ class RecompDailyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => UserProvider()),
         ChangeNotifierProvider<LocaleProvider>.value(value: localeProvider),
+        ChangeNotifierProvider<ThemeProvider>.value(value: themeProvider),
       ],
-      child: Consumer<LocaleProvider>(
-        builder: (context, locale, _) => MaterialApp(
-          onGenerateTitle: (ctx) => AppLocalizations.of(ctx).appTitle,
-          debugShowCheckedModeBanner: false,
-          themeMode: ThemeMode.dark,
-          darkTheme: _buildTheme(),
-          theme: _buildTheme(),
-          locale: locale.locale, // null = follow system
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          home: const HomeScreen(),
-        ),
+      child: Consumer2<LocaleProvider, ThemeProvider>(
+        builder: (context, locale, themePref, _) {
+          final palette = themePref.variant == AppThemeVariant.medium
+              ? _paletteMedium
+              : _paletteDark;
+          // System chrome picks up whichever scaffold bg we're on so the
+          // status bar / nav bar blend in.
+          SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: Brightness.light,
+            systemNavigationBarColor: palette.bg,
+            systemNavigationBarIconBrightness: Brightness.light,
+          ));
+          return MaterialApp(
+            onGenerateTitle: (ctx) => AppLocalizations.of(ctx).appTitle,
+            debugShowCheckedModeBanner: false,
+            themeMode: ThemeMode.dark,
+            darkTheme: _buildTheme(palette),
+            theme: _buildTheme(palette),
+            locale: locale.locale, // null = follow system
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: const HomeScreen(),
+          );
+        },
       ),
     );
   }
 }
 
 // ============================================================================
-//  Theme — dark, compact, data-dense. Black surfaces + single red accent.
+//  Theme — two dark variants (pure black vs graphite). Same red accent.
 //  Typography: tight letter-spacing, reduced weight contrast, numeric-friendly.
 // ============================================================================
 
-const _bg           = Color(0xFF000000);  // Scaffold
-const _surface      = Color(0xFF0E0E10);  // Card / AppBar
-const _surfaceHi    = Color(0xFF1A1A1D);  // Input bg, raised card
-const _surfaceHiHi  = Color(0xFF242428);  // Pressed / hover
-const _outline      = Color(0xFF2A2A2E);
-const _outlineSoft  = Color(0xFF1E1E22);
-const _onSurface    = Color(0xFFE7E7EA);
-const _muted        = Color(0xFF8A8A90);
-const _accent       = Color(0xFFE53935);  // signal red
-const _onAccent     = Color(0xFFFFFFFF);
+class _Palette {
+  final Color bg;           // Scaffold
+  final Color surface;      // Card / AppBar
+  final Color surfaceHi;    // Input bg, raised card
+  final Color surfaceHiHi;  // Pressed / hover
+  final Color outline;
+  final Color outlineSoft;
+  final Color onSurface;
+  final Color muted;
+  final Color accent = const Color(0xFFE53935);
+  final Color onAccent = const Color(0xFFFFFFFF);
+  const _Palette({
+    required this.bg,
+    required this.surface,
+    required this.surfaceHi,
+    required this.surfaceHiHi,
+    required this.outline,
+    required this.outlineSoft,
+    required this.onSurface,
+    required this.muted,
+  });
+}
 
-ThemeData _buildTheme() {
-  const scheme = ColorScheme(
+const _paletteDark = _Palette(
+  bg:           Color(0xFF000000),
+  surface:      Color(0xFF0E0E10),
+  surfaceHi:    Color(0xFF1A1A1D),
+  surfaceHiHi:  Color(0xFF242428),
+  outline:      Color(0xFF2A2A2E),
+  outlineSoft:  Color(0xFF1E1E22),
+  onSurface:    Color(0xFFE7E7EA),
+  muted:        Color(0xFF8A8A90),
+);
+
+const _paletteMedium = _Palette(
+  bg:           Color(0xFF1A1A1C),
+  surface:      Color(0xFF26262A),
+  surfaceHi:    Color(0xFF32323A),
+  surfaceHiHi:  Color(0xFF40404A),
+  outline:      Color(0xFF48484F),
+  outlineSoft:  Color(0xFF323238),
+  onSurface:    Color(0xFFECECEF),
+  muted:        Color(0xFFA2A2A8),
+);
+
+ThemeData _buildTheme(_Palette p) {
+  final scheme = ColorScheme(
     brightness: Brightness.dark,
-    primary: _accent,
-    onPrimary: _onAccent,
-    secondary: _accent,
-    onSecondary: _onAccent,
-    error: _accent,
-    onError: _onAccent,
-    surface: _surface,
-    onSurface: _onSurface,
-    surfaceContainerLowest: _bg,
-    surfaceContainerLow: _surface,
-    surfaceContainer: _surfaceHi,
-    surfaceContainerHigh: _surfaceHi,
-    surfaceContainerHighest: _surfaceHiHi,
-    onSurfaceVariant: _muted,
-    outline: _outline,
-    outlineVariant: _outlineSoft,
-    inverseSurface: _onSurface,
-    onInverseSurface: _bg,
-    inversePrimary: _accent,
+    primary: p.accent,
+    onPrimary: p.onAccent,
+    secondary: p.accent,
+    onSecondary: p.onAccent,
+    error: p.accent,
+    onError: p.onAccent,
+    surface: p.surface,
+    onSurface: p.onSurface,
+    surfaceContainerLowest: p.bg,
+    surfaceContainerLow: p.surface,
+    surfaceContainer: p.surfaceHi,
+    surfaceContainerHigh: p.surfaceHi,
+    surfaceContainerHighest: p.surfaceHiHi,
+    onSurfaceVariant: p.muted,
+    outline: p.outline,
+    outlineVariant: p.outlineSoft,
+    inverseSurface: p.onSurface,
+    onInverseSurface: p.bg,
+    inversePrimary: p.accent,
   );
 
   final base = ThemeData(
     useMaterial3: true,
     brightness: Brightness.dark,
     colorScheme: scheme,
-    scaffoldBackgroundColor: _bg,
+    scaffoldBackgroundColor: p.bg,
     splashFactory: NoSplash.splashFactory,
     highlightColor: Colors.transparent,
     fontFamily: null, // use platform default sans-serif
   );
 
   // Tightened, numeric-friendly typography.
-  // NOTE: each TextStyle sets `color: _onSurface` explicitly — if you only
+  // NOTE: each TextStyle sets `color:` explicitly — if you only
   // call `.apply(bodyColor: ...)` and then `.copyWith(bodyLarge: TextStyle(...))`,
   // the copyWith REPLACES the style whole and the color from apply is lost,
-  // which leaks black-on-black into TextField input text on dark theme.
+  // which leaks black-on-black into TextField input text.
   final tt = base.textTheme.copyWith(
-    displayLarge:  const TextStyle(color: _onSurface, fontWeight: FontWeight.w700, letterSpacing: -1.0, height: 1.1),
-    displayMedium: const TextStyle(color: _onSurface, fontWeight: FontWeight.w700, letterSpacing: -0.5, height: 1.15),
-    headlineLarge: const TextStyle(color: _onSurface, fontWeight: FontWeight.w600, letterSpacing: -0.3),
-    headlineMedium:const TextStyle(color: _onSurface, fontWeight: FontWeight.w600, letterSpacing: -0.2),
-    titleLarge:    const TextStyle(color: _onSurface, fontWeight: FontWeight.w600, letterSpacing: -0.1),
-    titleMedium:   const TextStyle(color: _onSurface, fontWeight: FontWeight.w600),
-    titleSmall:    const TextStyle(color: _onSurface, fontWeight: FontWeight.w600),
-    bodyLarge:     const TextStyle(color: _onSurface, fontSize: 15, height: 1.45),
-    bodyMedium:    const TextStyle(color: _onSurface, fontSize: 14, height: 1.45),
-    bodySmall:     const TextStyle(color: _muted, fontSize: 12, height: 1.4),
-    labelLarge:    const TextStyle(color: _onSurface, fontWeight: FontWeight.w600, letterSpacing: 0.2),
-    labelMedium:   const TextStyle(color: _onSurface, fontWeight: FontWeight.w600, letterSpacing: 0.2),
-    labelSmall:    const TextStyle(color: _muted, fontSize: 11, letterSpacing: 0.4),
+    displayLarge:  TextStyle(color: p.onSurface, fontWeight: FontWeight.w700, letterSpacing: -1.0, height: 1.1),
+    displayMedium: TextStyle(color: p.onSurface, fontWeight: FontWeight.w700, letterSpacing: -0.5, height: 1.15),
+    headlineLarge: TextStyle(color: p.onSurface, fontWeight: FontWeight.w600, letterSpacing: -0.3),
+    headlineMedium:TextStyle(color: p.onSurface, fontWeight: FontWeight.w600, letterSpacing: -0.2),
+    titleLarge:    TextStyle(color: p.onSurface, fontWeight: FontWeight.w600, letterSpacing: -0.1),
+    titleMedium:   TextStyle(color: p.onSurface, fontWeight: FontWeight.w600),
+    titleSmall:    TextStyle(color: p.onSurface, fontWeight: FontWeight.w600),
+    bodyLarge:     TextStyle(color: p.onSurface, fontSize: 15, height: 1.45),
+    bodyMedium:    TextStyle(color: p.onSurface, fontSize: 14, height: 1.45),
+    bodySmall:     TextStyle(color: p.muted, fontSize: 12, height: 1.4),
+    labelLarge:    TextStyle(color: p.onSurface, fontWeight: FontWeight.w600, letterSpacing: 0.2),
+    labelMedium:   TextStyle(color: p.onSurface, fontWeight: FontWeight.w600, letterSpacing: 0.2),
+    labelSmall:    TextStyle(color: p.muted, fontSize: 11, letterSpacing: 0.4),
   );
 
   return base.copyWith(
     textTheme: tt,
     primaryTextTheme: tt,
-    textSelectionTheme: const TextSelectionThemeData(
-      cursorColor: _accent,
-      selectionColor: Color(0x40E53935),
-      selectionHandleColor: _accent,
+    textSelectionTheme: TextSelectionThemeData(
+      cursorColor: p.accent,
+      selectionColor: p.accent.withValues(alpha: 0.25),
+      selectionHandleColor: p.accent,
     ),
-    appBarTheme: const AppBarTheme(
-      backgroundColor: _bg,
+    appBarTheme: AppBarTheme(
+      backgroundColor: p.bg,
       surfaceTintColor: Colors.transparent,
-      foregroundColor: _onSurface,
+      foregroundColor: p.onSurface,
       centerTitle: false,
       elevation: 0,
       scrolledUnderElevation: 0,
       titleTextStyle: TextStyle(
-        color: _onSurface,
+        color: p.onSurface,
         fontSize: 18,
         fontWeight: FontWeight.w600,
         letterSpacing: -0.2,
       ),
     ),
     cardTheme: CardThemeData(
-      color: _surface,
+      color: p.surface,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        side: const BorderSide(color: _outlineSoft, width: 1),
+        side: BorderSide(color: p.outlineSoft, width: 1),
       ),
     ),
-    dividerTheme: const DividerThemeData(color: _outlineSoft, space: 1, thickness: 1),
-    listTileTheme: const ListTileThemeData(
-      iconColor: _muted,
-      textColor: _onSurface,
+    dividerTheme: DividerThemeData(color: p.outlineSoft, space: 1, thickness: 1),
+    listTileTheme: ListTileThemeData(
+      iconColor: p.muted,
+      textColor: p.onSurface,
     ),
-    iconTheme: const IconThemeData(color: _onSurface),
+    iconTheme: IconThemeData(color: p.onSurface),
     navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: _surface,
+      backgroundColor: p.surface,
       surfaceTintColor: Colors.transparent,
-      indicatorColor: _accent.withValues(alpha: 0.12),
-      iconTheme: WidgetStatePropertyAll(const IconThemeData(color: _muted)),
+      indicatorColor: p.accent.withValues(alpha: 0.12),
+      iconTheme: WidgetStatePropertyAll(IconThemeData(color: p.muted)),
       labelTextStyle: WidgetStatePropertyAll(
         const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 0.2),
       ),
       height: 64,
     ),
-    tabBarTheme: const TabBarThemeData(
-      labelColor: _onSurface,
-      unselectedLabelColor: _muted,
-      indicatorColor: _accent,
-      dividerColor: _outlineSoft,
-      labelStyle: TextStyle(fontWeight: FontWeight.w600, letterSpacing: 0.2),
-      unselectedLabelStyle: TextStyle(fontWeight: FontWeight.w500),
+    tabBarTheme: TabBarThemeData(
+      labelColor: p.onSurface,
+      unselectedLabelColor: p.muted,
+      indicatorColor: p.accent,
+      dividerColor: p.outlineSoft,
+      labelStyle: const TextStyle(fontWeight: FontWeight.w600, letterSpacing: 0.2),
+      unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: _surfaceHi,
-      hintStyle: const TextStyle(color: _muted),
-      labelStyle: const TextStyle(color: _muted),
+      fillColor: p.surfaceHi,
+      hintStyle: TextStyle(color: p.muted),
+      labelStyle: TextStyle(color: p.muted),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: _outline),
+        borderSide: BorderSide(color: p.outline),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: _outline),
+        borderSide: BorderSide(color: p.outline),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: _accent, width: 1.4),
+        borderSide: BorderSide(color: p.accent, width: 1.4),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        backgroundColor: _accent,
-        foregroundColor: _onAccent,
-        disabledBackgroundColor: _surfaceHi,
-        disabledForegroundColor: _muted,
+        backgroundColor: p.accent,
+        foregroundColor: p.onAccent,
+        disabledBackgroundColor: p.surfaceHi,
+        disabledForegroundColor: p.muted,
         textStyle: const TextStyle(fontWeight: FontWeight.w600, letterSpacing: 0.2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
-        backgroundColor: _accent,
-        foregroundColor: _onAccent,
+        backgroundColor: p.accent,
+        foregroundColor: p.onAccent,
         elevation: 0,
         textStyle: const TextStyle(fontWeight: FontWeight.w600, letterSpacing: 0.2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -221,39 +273,39 @@ ThemeData _buildTheme() {
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        foregroundColor: _onSurface,
-        side: const BorderSide(color: _outline),
+        foregroundColor: p.onSurface,
+        side: BorderSide(color: p.outline),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
-        foregroundColor: _accent,
+        foregroundColor: p.accent,
         textStyle: const TextStyle(fontWeight: FontWeight.w600),
       ),
     ),
-    snackBarTheme: const SnackBarThemeData(
-      backgroundColor: _surfaceHiHi,
-      contentTextStyle: TextStyle(color: _onSurface),
+    snackBarTheme: SnackBarThemeData(
+      backgroundColor: p.surfaceHiHi,
+      contentTextStyle: TextStyle(color: p.onSurface),
       behavior: SnackBarBehavior.floating,
     ),
     dialogTheme: DialogThemeData(
-      backgroundColor: _surface,
+      backgroundColor: p.surface,
       surfaceTintColor: Colors.transparent,
-      titleTextStyle: const TextStyle(
-          color: _onSurface, fontSize: 17, fontWeight: FontWeight.w600),
-      contentTextStyle: const TextStyle(color: _onSurface, fontSize: 14, height: 1.45),
+      titleTextStyle: TextStyle(
+          color: p.onSurface, fontSize: 17, fontWeight: FontWeight.w600),
+      contentTextStyle: TextStyle(color: p.onSurface, fontSize: 14, height: 1.45),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
     ),
-    bottomSheetTheme: const BottomSheetThemeData(
-      backgroundColor: _surface,
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: p.surface,
       surfaceTintColor: Colors.transparent,
-      modalBackgroundColor: _surface,
+      modalBackgroundColor: p.surface,
     ),
-    progressIndicatorTheme: const ProgressIndicatorThemeData(
-      color: _accent,
-      linearTrackColor: _outlineSoft,
-      circularTrackColor: _outlineSoft,
+    progressIndicatorTheme: ProgressIndicatorThemeData(
+      color: p.accent,
+      linearTrackColor: p.outlineSoft,
+      circularTrackColor: p.outlineSoft,
     ),
   );
 }

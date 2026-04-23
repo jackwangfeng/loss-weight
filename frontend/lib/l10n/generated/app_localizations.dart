@@ -1388,6 +1388,30 @@ abstract class AppLocalizations {
   /// **'简体中文'**
   String get settingsLanguageChinese;
 
+  /// No description provided for @settingsAppearance.
+  ///
+  /// In en, this message translates to:
+  /// **'Appearance'**
+  String get settingsAppearance;
+
+  /// No description provided for @settingsAppearanceDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose how dark the interface surfaces are.'**
+  String get settingsAppearanceDescription;
+
+  /// No description provided for @settingsThemeDark.
+  ///
+  /// In en, this message translates to:
+  /// **'Dark'**
+  String get settingsThemeDark;
+
+  /// No description provided for @settingsThemeMedium.
+  ///
+  /// In en, this message translates to:
+  /// **'Graphite'**
+  String get settingsThemeMedium;
+
   /// No description provided for @profileSettings.
   ///
   /// In en, this message translates to:
