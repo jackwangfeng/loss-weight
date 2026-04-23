@@ -1,4 +1,4 @@
-package com.example.loss_weight
+package app.recompdaily.test
 
 import io.flutter.embedding.android.FlutterActivity
 
