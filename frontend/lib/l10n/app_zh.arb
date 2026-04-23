@@ -240,5 +240,10 @@
   "settingsAppearanceDescription": "选择界面的深浅层级。",
   "settingsThemeDark": "深黑",
   "settingsThemeMedium": "柔和深色",
-  "profileSettings": "设置"
+  "profileSettings": "设置",
+  "quickSetupBannerTitle": "设置你的目标，让教练更准",
+  "quickSetupBannerHint": "30 秒",
+  "quickSetupTitle": "快速设置",
+  "quickSetupSubtitle": "这几项决定你的宏量目标和 AI 教练建议。可以随便跳，之后在「我的」里能改。",
+  "quickSetupSave": "保存"
 }

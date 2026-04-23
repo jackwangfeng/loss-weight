@@ -1417,6 +1417,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Settings'**
   String get profileSettings;
+
+  /// No description provided for @quickSetupBannerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Tune your targets for sharper coaching'**
+  String get quickSetupBannerTitle;
+
+  /// No description provided for @quickSetupBannerHint.
+  ///
+  /// In en, this message translates to:
+  /// **'30 seconds'**
+  String get quickSetupBannerHint;
+
+  /// No description provided for @quickSetupTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Quick setup'**
+  String get quickSetupTitle;
+
+  /// No description provided for @quickSetupSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'These drive your macro targets and AI advice. Skip anything — you can edit later in Profile.'**
+  String get quickSetupSubtitle;
+
+  /// No description provided for @quickSetupSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get quickSetupSave;
 }
 
 class _AppLocalizationsDelegate

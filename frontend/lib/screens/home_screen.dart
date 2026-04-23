@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
@@ -18,6 +19,8 @@ import '../models/food_record.dart';
 import '../models/exercise_record.dart';
 import '../models/weight_record.dart';
 import '../widgets/macro_dashboard_card.dart';
+import 'quick_setup_sheet.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -29,6 +32,26 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
   int _recordsTab = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // If AuthProvider.load() restored a session on cold boot, the
+    // UserProvider is still empty — fetch the profile so DashboardScreen
+    // doesn't flash the "loading user" placeholder while we wait for the
+    // user to tap refresh.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final auth = context.read<AuthProvider>();
+      final userProvider = context.read<UserProvider>();
+      if (auth.isLoggedIn &&
+          auth.userId != null &&
+          userProvider.currentUser == null &&
+          !userProvider.isLoading) {
+        userProvider.loadUser(auth.userId!);
+      }
+    });
+  }
 
   void jumpToRecords(int subTab) {
     setState(() {
@@ -151,6 +174,7 @@ class DashboardScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              _QuickSetupBanner(user: user),
               _DailyBriefCard(userId: user.id, onChatTap: () {
                 final homeState = context.findAncestorStateOfType<_HomeScreenState>();
                 homeState?.jumpToCoach();
@@ -244,23 +268,54 @@ class _DailyBriefCardState extends State<_DailyBriefCard> {
   final AIService _ai = AIService();
   Map<String, dynamic>? _data;
   String? _error;
-  bool _loading = false;
+  bool _loading = false;    // true while a refresh is in flight
+
+  // Stale-while-revalidate: cache the last successful brief per-user; on next
+  // mount show the cached copy instantly while the live API recomputes.
+  static String _cacheKey(int userId) => 'home.daily_brief.v1.$userId';
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    _loadCache().then((_) {
+      if (!mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    });
+  }
+
+  Future<void> _loadCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_cacheKey(widget.userId));
+      if (raw == null || !mounted) return;
+      final parsed = jsonDecode(raw);
+      if (parsed is Map<String, dynamic>) {
+        setState(() => _data = parsed);
+      }
+    } catch (_) {
+      // Corrupted cache — ignore; live fetch will still run.
+    }
   }
 
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
     try {
-      _data = await _ai.getDailyBrief(
+      final live = await _ai.getDailyBrief(
         userId: widget.userId,
         locale: effectiveAiLocale(context),
       );
+      if (!mounted) return;
+      setState(() => _data = live);
+      // Cache AFTER we've committed it to state — stale copy is OK even if
+      // the file write fails.
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_cacheKey(widget.userId), jsonEncode(live));
+      } catch (_) {}
     } catch (e) {
-      _error = e.toString();
+      // Refresh failed — if we already have cache on screen, keep showing it
+      // silently; only bubble up the error when there's nothing to display.
+      if (_data == null) _error = e.toString();
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -286,12 +341,25 @@ class _DailyBriefCardState extends State<_DailyBriefCard> {
                         fontWeight: FontWeight.w600,
                         letterSpacing: 0.4)),
                 const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.refresh, size: 18),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  onPressed: _loading ? null : _load,
-                ),
+                // Show a small spinner in-place of the refresh icon while a
+                // live refresh is in flight, so the UI makes it clear that
+                // cached data is being replaced soon.
+                if (_loading)
+                  SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation(scheme.onSurfaceVariant),
+                    ),
+                  )
+                else
+                  IconButton(
+                    icon: const Icon(Icons.refresh, size: 18),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: _load,
+                  ),
               ],
             ),
             const SizedBox(height: 14),
@@ -639,5 +707,115 @@ class _TodayMacroCardState extends State<_TodayMacroCard> {
   @override
   Widget build(BuildContext context) {
     return MacroDashboardCard(todayRecords: _today);
+  }
+}
+
+// ============================================================================
+//  Quick-setup banner — shows at top of dashboard until the user either fills
+//  in a minimal profile or explicitly dismisses the prompt.
+// ============================================================================
+
+/// "Needs setup" = height or birthday still at factory defaults (0 / null).
+/// Those two fields aren't auto-assigned a plausible number by the backend's
+/// new-user defaults, so their absence is the cleanest signal that the user
+/// never ran the quick setup.
+bool _profileNeedsQuickSetup(dynamic user) {
+  if (user == null) return false;
+  return (user.height ?? 0) <= 0 || user.birthday == null;
+}
+
+class _QuickSetupBanner extends StatefulWidget {
+  final dynamic user;
+  const _QuickSetupBanner({required this.user});
+
+  @override
+  State<_QuickSetupBanner> createState() => _QuickSetupBannerState();
+}
+
+class _QuickSetupBannerState extends State<_QuickSetupBanner> {
+  static const _prefsKey = 'onboarding.quicksetup_dismissed';
+  bool? _dismissed; // null until loaded
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((prefs) {
+      if (!mounted) return;
+      setState(() => _dismissed = prefs.getBool(_prefsKey) ?? false);
+    });
+  }
+
+  Future<void> _dismiss() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefsKey, true);
+    if (mounted) setState(() => _dismissed = true);
+  }
+
+  Future<void> _openSheet() async {
+    final saved = await QuickSetupSheet.show(context, widget.user);
+    if (saved == true && mounted) {
+      // Successful save — hide banner for good (user "finished" setup).
+      await _dismiss();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_dismissed == null || _dismissed == true) {
+      return const SizedBox.shrink();
+    }
+    if (!_profileNeedsQuickSetup(widget.user)) {
+      return const SizedBox.shrink();
+    }
+    final l10n = AppLocalizations.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        onTap: _openSheet,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: scheme.primary.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: scheme.primary.withValues(alpha: 0.30)),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.person_outline, color: scheme.primary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      l10n.quickSetupBannerTitle,
+                      style: TextStyle(
+                        color: scheme.onSurface,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      l10n.quickSetupBannerHint,
+                      style: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: Icon(Icons.close, color: scheme.onSurfaceVariant),
+                onPressed: _dismiss,
+                tooltip: null,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

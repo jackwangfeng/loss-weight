@@ -751,4 +751,20 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get profileSettings => 'Settings';
+
+  @override
+  String get quickSetupBannerTitle => 'Tune your targets for sharper coaching';
+
+  @override
+  String get quickSetupBannerHint => '30 seconds';
+
+  @override
+  String get quickSetupTitle => 'Quick setup';
+
+  @override
+  String get quickSetupSubtitle =>
+      'These drive your macro targets and AI advice. Skip anything — you can edit later in Profile.';
+
+  @override
+  String get quickSetupSave => 'Save';
 }

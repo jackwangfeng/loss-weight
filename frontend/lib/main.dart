@@ -17,27 +17,35 @@ Future<void> main() async {
   }
   final localeProvider = LocaleProvider();
   final themeProvider = ThemeProvider();
-  await Future.wait([localeProvider.load(), themeProvider.load()]);
+  final authProvider = AuthProvider();
+  await Future.wait([
+    localeProvider.load(),
+    themeProvider.load(),
+    authProvider.load(),
+  ]);
   runApp(RecompDailyApp(
     localeProvider: localeProvider,
     themeProvider: themeProvider,
+    authProvider: authProvider,
   ));
 }
 
 class RecompDailyApp extends StatelessWidget {
   final LocaleProvider localeProvider;
   final ThemeProvider themeProvider;
+  final AuthProvider authProvider;
   const RecompDailyApp({
     Key? key,
     required this.localeProvider,
     required this.themeProvider,
+    required this.authProvider,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider<AuthProvider>.value(value: authProvider),
         ChangeNotifierProvider(create: (_) => UserProvider()),
         ChangeNotifierProvider<LocaleProvider>.value(value: localeProvider),
         ChangeNotifierProvider<ThemeProvider>.value(value: themeProvider),

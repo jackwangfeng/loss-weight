@@ -311,5 +311,10 @@
   "settingsAppearanceDescription": "Choose how dark the interface surfaces are.",
   "settingsThemeDark": "Dark",
   "settingsThemeMedium": "Graphite",
-  "profileSettings": "Settings"
+  "profileSettings": "Settings",
+  "quickSetupBannerTitle": "Tune your targets for sharper coaching",
+  "quickSetupBannerHint": "30 seconds",
+  "quickSetupTitle": "Quick setup",
+  "quickSetupSubtitle": "These drive your macro targets and AI advice. Skip anything — you can edit later in Profile.",
+  "quickSetupSave": "Save"
 }

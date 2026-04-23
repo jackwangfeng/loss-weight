@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../config/auth_config.dart';
 import '../models/user_profile.dart';
 import '../services/auth_service.dart';
@@ -9,6 +10,39 @@ import '../services/api_service.dart';
 
 class AuthProvider with ChangeNotifier {
   final AuthService _authService = AuthService();
+
+  // Persisted session. JWT TTL on the backend is 7 days (see
+  // backend config), so restoring a stored token survives cold starts within
+  // that window; 401 from the server naturally kicks us back to login.
+  static const _prefsTokenKey = 'auth.token';
+  static const _prefsUserIdKey = 'auth.user_id';
+
+  /// Restore a stored session on app startup. Call once in main() before
+  /// runApp so HomeScreen sees `isLoggedIn == true` on the first frame when
+  /// the user is already logged in.
+  Future<void> load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString(_prefsTokenKey);
+    final userId = prefs.getInt(_prefsUserIdKey);
+    if (token != null && token.isNotEmpty && userId != null) {
+      _token = token;
+      _userId = userId;
+      ApiService().token = token;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _persistSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (_token != null) await prefs.setString(_prefsTokenKey, _token!);
+    if (_userId != null) await prefs.setInt(_prefsUserIdKey, _userId!);
+  }
+
+  Future<void> _clearPersistedSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_prefsTokenKey);
+    await prefs.remove(_prefsUserIdKey);
+  }
 
   // google_sign_in 7.x is event-driven. On web the SDK renders its own button
   // (see widgets/google_sign_in_button_web.dart) and fires events on
@@ -53,6 +87,7 @@ class AuthProvider with ChangeNotifier {
         _token = response['token'] as String?;
         _userId = response['user_id'] as int?;
         ApiService().token = _token;
+        await _persistSession();
       } catch (e) {
         _error = e.toString();
       } finally {
@@ -135,6 +170,7 @@ class AuthProvider with ChangeNotifier {
       // 设置 token 到 ApiService
       final apiService = ApiService();
       apiService.token = _token;
+      await _persistSession();
 
       // 如果是新用户，可能需要完善资料
       final isNewUser = response['is_new_user'] as bool? ?? false;
@@ -168,6 +204,8 @@ class AuthProvider with ChangeNotifier {
     _token = null;
     _userId = null;
     _currentUser = null;
+    ApiService().token = null;
+    await _clearPersistedSession();
     notifyListeners();
   }
 

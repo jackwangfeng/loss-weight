@@ -741,4 +741,19 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get profileSettings => '设置';
+
+  @override
+  String get quickSetupBannerTitle => '设置你的目标，让教练更准';
+
+  @override
+  String get quickSetupBannerHint => '30 秒';
+
+  @override
+  String get quickSetupTitle => '快速设置';
+
+  @override
+  String get quickSetupSubtitle => '这几项决定你的宏量目标和 AI 教练建议。可以随便跳，之后在「我的」里能改。';
+
+  @override
+  String get quickSetupSave => '保存';
 }
