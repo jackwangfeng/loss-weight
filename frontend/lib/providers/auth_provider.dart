@@ -20,9 +20,13 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> ensureGoogleInitialized() async {
     if (_googleInitialized) return;
+    // `clientId` on web = GIS popup's client; on iOS pass null so the plugin
+    // reads GIDClientID from Info.plist (iOS OAuth client, different id);
+    // Android reads from google-services.json. `serverClientId` stays the web
+    // id — that's what the backend verifies as the ID token's `aud`.
     await GoogleSignIn.instance.initialize(
-      clientId: googleClientId,       // Used by GIS popup on web
-      serverClientId: googleClientId, // Audience for the returned id_token
+      clientId: kIsWeb ? googleClientId : null,
+      serverClientId: googleClientId,
     );
     _googleSub = GoogleSignIn.instance.authenticationEvents
         .listen(_onGoogleAuthEvent, onError: (Object e) {

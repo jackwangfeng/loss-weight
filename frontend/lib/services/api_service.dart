@@ -10,15 +10,19 @@ class ApiService {
   String _baseUrl = _defaultBaseUrl();
   String? _token;
 
-  // Web 跟随页面 origin（手机从 LAN IP 访问时 localhost 指向手机自己，会全挂）。
+  // Web 跟随页面 origin；真机通过 LAN IP 连宿主 Mac（localhost 在手机上指手机自己）。
+  // 临时硬编码到 LAN IP；生产/其他网段用 --dart-define=API_BASE=... 覆盖。
   static String _defaultBaseUrl() {
+    const override = String.fromEnvironment('API_BASE');
+    if (override.isNotEmpty) return override;
     if (kIsWeb) {
       final base = Uri.base;
       if (base.host.isNotEmpty) {
         return '${base.scheme}://${base.host}:8000/v1';
       }
+      return 'http://localhost:8000/v1';
     }
-    return 'http://localhost:8000/v1';
+    return 'http://192.168.0.157:8000/v1';
   }
 
   String get baseUrl => _baseUrl;

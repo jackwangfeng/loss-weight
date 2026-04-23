@@ -100,8 +100,8 @@ func SetupAIRoutes(v1 *gin.RouterGroup, db *gorm.DB, logger *zap.Logger, cfg *co
 	}
 }
 
-func SetupAuthRoutes(v1 *gin.RouterGroup, db *gorm.DB, logger *zap.Logger, googleClientID string, tokens *auth.TokenIssuer) {
-	authService := services.NewAuthService(db, logger, googleClientID, tokens)
+func SetupAuthRoutes(v1 *gin.RouterGroup, db *gorm.DB, logger *zap.Logger, googleClientID, googleIOSClientID string, tokens *auth.TokenIssuer) {
+	authService := services.NewAuthService(db, logger, googleClientID, googleIOSClientID, tokens)
 	authHandler := handlers.NewAuthHandler(authService, logger)
 
 	authGroup := v1.Group("/auth")

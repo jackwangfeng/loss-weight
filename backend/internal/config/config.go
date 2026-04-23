@@ -25,8 +25,9 @@ type Config struct {
 	VisionAPIURL   string
 	OpenAIKey       string
 	BaiduCVKey      string
-	ChromaURL       string
-	GoogleClientID  string // OAuth 2.0 Web Client ID — audience for Google ID tokens
+	ChromaURL          string
+	GoogleClientID     string // OAuth 2.0 Web Client ID — audience for Google ID tokens (web/Android)
+	GoogleIOSClientID  string // OAuth 2.0 iOS Client ID — iOS-native Google Sign-In returns tokens with this aud
 }
 
 // Load reads configuration from file and environment variables
@@ -60,6 +61,7 @@ func Load(configPath string) (*Config, error) {
 	_ = viper.BindEnv("baidu_cv_api_key", "BAIDU_CV_API_KEY")
 	_ = viper.BindEnv("secret_key", "SECRET_KEY")
 	_ = viper.BindEnv("google_client_id", "GOOGLE_CLIENT_ID")
+	_ = viper.BindEnv("google_ios_client_id", "GOOGLE_IOS_CLIENT_ID")
 
 	// Try to read config file (optional)
 	if err := viper.ReadInConfig(); err != nil {
@@ -86,7 +88,8 @@ func Load(configPath string) (*Config, error) {
 		OpenAIKey:      viper.GetString("openai_api_key"),
 		BaiduCVKey:     viper.GetString("baidu_cv_api_key"),
 		ChromaURL:      viper.GetString("chroma_url"),
-		GoogleClientID: viper.GetString("google_client_id"),
+		GoogleClientID:    viper.GetString("google_client_id"),
+		GoogleIOSClientID: viper.GetString("google_ios_client_id"),
 	}
 
 	return config, nil

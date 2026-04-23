@@ -15,24 +15,26 @@ import (
 )
 
 type AuthService struct {
-	db             *gorm.DB
-	logger         *zap.Logger
-	skipVerify     bool              // 是否跳过验证码校验（测试模式）
-	googleClientID string            // Google OAuth Web Client ID — expected audience on ID tokens
-	tokens         *auth.TokenIssuer // JWT issuer, shared with middleware for verification
+	db                *gorm.DB
+	logger            *zap.Logger
+	skipVerify        bool              // 是否跳过验证码校验（测试模式）
+	googleClientID    string            // Google OAuth Web Client ID — aud for web/Android ID tokens
+	googleIOSClientID string            // Google OAuth iOS Client ID — iOS-native GIDSignIn returns tokens with this aud
+	tokens            *auth.TokenIssuer // JWT issuer, shared with middleware for verification
 }
 
-func NewAuthService(db *gorm.DB, logger *zap.Logger, googleClientID string, tokens *auth.TokenIssuer) *AuthService {
+func NewAuthService(db *gorm.DB, logger *zap.Logger, googleClientID, googleIOSClientID string, tokens *auth.TokenIssuer) *AuthService {
 	// 从环境变量读取是否跳过验证码校验
 	// 测试模式下，SKIP_SMS_VERIFY=true
 	skipVerify := os.Getenv("SKIP_SMS_VERIFY") == "true"
 
 	return &AuthService{
-		db:             db,
-		logger:         logger,
-		skipVerify:     skipVerify,
-		googleClientID: googleClientID,
-		tokens:         tokens,
+		db:                db,
+		logger:            logger,
+		skipVerify:        skipVerify,
+		googleClientID:    googleClientID,
+		googleIOSClientID: googleIOSClientID,
+		tokens:            tokens,
 	}
 }
 
@@ -227,9 +229,25 @@ func (s *AuthService) GoogleLogin(idToken, ip string) (*LoginResponse, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	payload, err := idtoken.Validate(ctx, idToken, s.googleClientID)
-	if err != nil {
-		s.logger.Warn("google id token validation failed", zap.Error(err))
+	// Try each configured audience in turn — iOS-native tokens have aud=iOS client id,
+	// web/Android tokens have aud=web client id; both are legitimate for this backend.
+	candidates := []string{s.googleClientID}
+	if s.googleIOSClientID != "" {
+		candidates = append(candidates, s.googleIOSClientID)
+	}
+	var payload *idtoken.Payload
+	var lastErr error
+	for _, aud := range candidates {
+		p, err := idtoken.Validate(ctx, idToken, aud)
+		if err == nil {
+			payload = p
+			break
+		}
+		lastErr = err
+	}
+	if payload == nil {
+		s.logger.Warn("google id token validation failed",
+			zap.Error(lastErr), zap.Strings("tried_audiences", candidates))
 		return nil, fmt.Errorf("Google 身份验证失败")
 	}
 
@@ -252,7 +270,7 @@ func (s *AuthService) GoogleLogin(idToken, ip string) (*LoginResponse, error) {
 	var account models.UserAccount
 	isNewUser := false
 
-	err = s.db.Where("google_sub = ?", sub).First(&account).Error
+	err := s.db.Where("google_sub = ?", sub).First(&account).Error
 	if err == gorm.ErrRecordNotFound {
 		err = s.db.Where("email = ?", email).First(&account).Error
 		if err == nil {

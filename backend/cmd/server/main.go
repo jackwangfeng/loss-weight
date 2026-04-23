@@ -77,7 +77,7 @@ func main() {
 	v1 := r.Group("/v1")
 	{
 		tokens := auth.NewTokenIssuer(cfg.SecretKey, cfg.JWTExpireDays)
-		routes.SetupAuthRoutes(v1, db, logger, cfg.GoogleClientID, tokens)
+		routes.SetupAuthRoutes(v1, db, logger, cfg.GoogleClientID, cfg.GoogleIOSClientID, tokens)
 		routes.SetupUserRoutes(v1, db, logger)
 		routes.SetupFoodRoutes(v1, db, logger)
 		routes.SetupWeightRoutes(v1, db, logger)
