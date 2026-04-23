@@ -662,6 +662,7 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
         VoiceInputButton(
           targetController: _descCtrl,
           onFinalized: _estimate,
+          localeId: effectiveAiLocale(context) == 'zh' ? 'zh-CN' : 'en-US',
         ),
       ]),
 

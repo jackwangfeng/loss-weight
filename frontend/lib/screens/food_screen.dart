@@ -686,6 +686,7 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
           VoiceInputButton(
             targetController: _descCtrl,
             onFinalized: _estimateFromText,
+            localeId: effectiveAiLocale(context) == 'zh' ? 'zh-CN' : 'en-US',
           ),
           IconButton(
             icon: const Icon(Icons.camera_alt),

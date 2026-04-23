@@ -665,6 +665,7 @@ class _AddWeightSheetState extends State<_AddWeightSheet> {
         VoiceInputButton(
           targetController: _descCtrl,
           onFinalized: _aiParse,
+          localeId: effectiveAiLocale(context) == 'zh' ? 'zh-CN' : 'en-US',
         ),
       ]),
 

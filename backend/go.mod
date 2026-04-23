@@ -82,6 +82,7 @@ require (
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.14 // indirect
 	github.com/googleapis/gax-go/v2 v2.21.0 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect

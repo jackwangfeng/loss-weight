@@ -10,9 +10,17 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	"github.com/your-org/loss-weight/backend/internal/services"
 	"go.uber.org/zap"
 )
+
+// Mobile 客户端用任意 origin，beta 阶段 allow all。
+var wsUpgrader = websocket.Upgrader{
+	ReadBufferSize:  2048,
+	WriteBufferSize: 2048,
+	CheckOrigin:     func(r *http.Request) bool { return true },
+}
 
 // bindAudioRequest accepts either:
 //   - application/json with {audio_base64, mime_type, locale}
