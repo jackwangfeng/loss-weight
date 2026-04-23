@@ -1,16 +1,57 @@
 package handlers
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/your-org/loss-weight/backend/internal/services"
 	"go.uber.org/zap"
 )
+
+// bindAudioRequest accepts either:
+//   - application/json with {audio_base64, mime_type, locale}
+//   - multipart/form-data with "audio" file + optional "mime_type" / "locale"
+//
+// multipart 省掉客户端 base64 编码 + 33% 线上字节。Gemini 侧还是要
+// base64（inline_data 要求），但那是 AWS→Google 的快网段。
+func bindAudioRequest(c *gin.Context) (*services.TranscribeRequest, error) {
+	ct := c.ContentType()
+	if strings.HasPrefix(ct, "multipart/") {
+		fh, err := c.FormFile("audio")
+		if err != nil {
+			return nil, fmt.Errorf("missing 'audio' file: %w", err)
+		}
+		f, err := fh.Open()
+		if err != nil {
+			return nil, fmt.Errorf("open audio: %w", err)
+		}
+		defer f.Close()
+		raw, err := io.ReadAll(f)
+		if err != nil {
+			return nil, fmt.Errorf("read audio: %w", err)
+		}
+		req := &services.TranscribeRequest{
+			AudioBase64: base64.StdEncoding.EncodeToString(raw),
+			MimeType:    c.PostForm("mime_type"),
+			Locale:      c.PostForm("locale"),
+		}
+		if req.MimeType == "" {
+			req.MimeType = "audio/mp4"
+		}
+		return req, nil
+	}
+	var req services.TranscribeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		return nil, err
+	}
+	return &req, nil
+}
 
 type AIHandler struct {
 	service *services.AIService
@@ -73,12 +114,12 @@ func (h *AIHandler) ParseProfile(c *gin.Context) {
 }
 
 func (h *AIHandler) Transcribe(c *gin.Context) {
-	var req services.TranscribeRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	req, err := bindAudioRequest(c)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	result, err := h.service.TranscribeAudio(&req)
+	result, err := h.service.TranscribeAudio(req)
 	if err != nil {
 		h.logger.Error("transcribe failed", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "语音转写失败"})
@@ -88,12 +129,12 @@ func (h *AIHandler) Transcribe(c *gin.Context) {
 }
 
 func (h *AIHandler) TranscribeAndParseProfile(c *gin.Context) {
-	var req services.TranscribeRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	req, err := bindAudioRequest(c)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	result, err := h.service.TranscribeAndParseProfile(&req)
+	result, err := h.service.TranscribeAndParseProfile(req)
 	if err != nil {
 		h.logger.Error("transcribe-and-parse failed", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "语音解析失败"})

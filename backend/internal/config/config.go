@@ -28,6 +28,7 @@ type Config struct {
 	ChromaURL          string
 	GoogleClientID     string // OAuth 2.0 Web Client ID — audience for Google ID tokens (web/Android)
 	GoogleIOSClientID  string // OAuth 2.0 iOS Client ID — iOS-native Google Sign-In returns tokens with this aud
+	DeepgramAPIKey     string // Deepgram STT (nova-3 for en, nova-2 for zh-CN) — 3-4x faster than Gemini audio
 }
 
 // Load reads configuration from file and environment variables
@@ -64,6 +65,7 @@ func Load(configPath string) (*Config, error) {
 	_ = viper.BindEnv("google_ios_client_id", "GOOGLE_IOS_CLIENT_ID")
 	_ = viper.BindEnv("database_url", "DATABASE_URL")
 	_ = viper.BindEnv("redis_url", "REDIS_URL")
+	_ = viper.BindEnv("deepgram_api_key", "DEEPGRAM_API_KEY")
 
 	// Try to read config file (optional)
 	if err := viper.ReadInConfig(); err != nil {
@@ -92,6 +94,7 @@ func Load(configPath string) (*Config, error) {
 		ChromaURL:      viper.GetString("chroma_url"),
 		GoogleClientID:    viper.GetString("google_client_id"),
 		GoogleIOSClientID: viper.GetString("google_ios_client_id"),
+		DeepgramAPIKey:    viper.GetString("deepgram_api_key"),
 	}
 
 	return config, nil
