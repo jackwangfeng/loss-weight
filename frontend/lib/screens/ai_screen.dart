@@ -219,17 +219,12 @@ class _AISScreenState extends State<AIScreen> {
       createdAt: DateTime.now(),
     );
     const streamingId = -1;
-    final streamingStub = AIChatMessage(
-      id: streamingId,
-      userId: userId,
-      role: 'assistant',
-      content: '',
-      threadId: _currentThread!.id.toString(),
-      createdAt: DateTime.now(),
-    );
+    // Show ONLY the typing indicator until the first delta arrives, then
+    // materialize the assistant bubble. Previously the empty streamingStub
+    // was added at send time, so the UI briefly showed *two* assistant
+    // avatars (the empty stub bubble + the typing indicator below).
     setState(() {
       _messages.add(localUserMsg);
-      _messages.add(streamingStub);
       _messageController.clear();
       _isTyping = true;
     });
@@ -256,17 +251,27 @@ class _AISScreenState extends State<AIScreen> {
             if (firstDelta) {
               _isTyping = false;
               firstDelta = false;
-            }
-            final idx = _messages.indexWhere((m) => m.id == streamingId);
-            if (idx >= 0) {
-              _messages[idx] = AIChatMessage(
+              // Now that we actually have content, add the assistant bubble.
+              _messages.add(AIChatMessage(
                 id: streamingId,
                 userId: userId,
                 role: 'assistant',
                 content: buf.toString(),
                 threadId: _currentThread!.id.toString(),
-                createdAt: _messages[idx].createdAt,
-              );
+                createdAt: DateTime.now(),
+              ));
+            } else {
+              final idx = _messages.indexWhere((m) => m.id == streamingId);
+              if (idx >= 0) {
+                _messages[idx] = AIChatMessage(
+                  id: streamingId,
+                  userId: userId,
+                  role: 'assistant',
+                  content: buf.toString(),
+                  threadId: _currentThread!.id.toString(),
+                  createdAt: _messages[idx].createdAt,
+                );
+              }
             }
           });
           _scrollToBottom();
