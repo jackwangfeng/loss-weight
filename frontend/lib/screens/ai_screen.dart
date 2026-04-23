@@ -9,6 +9,7 @@ import '../providers/locale_provider.dart';
 import '../providers/user_provider.dart';
 import '../services/ai_service.dart';
 import '../models/ai_chat.dart';
+import '../widgets/voice_input_button.dart';
 
 class AIScreen extends StatefulWidget {
   const AIScreen({Key? key}) : super(key: key);
@@ -553,6 +554,11 @@ class _AISScreenState extends State<AIScreen> {
               onPressed: _pickImage,
               icon: const Icon(Icons.camera_alt),
               tooltip: l10n.actionLogFoodFromPhoto,
+            ),
+            VoiceInputButton(
+              targetController: _messageController,
+              localeId:
+                  effectiveAiLocale(context) == 'zh' ? 'zh-CN' : 'en-US',
             ),
             const SizedBox(width: 8),
             Expanded(
