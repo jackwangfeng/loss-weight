@@ -28,7 +28,11 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 flutter_ios_podfile_setup
 
 target 'Runner' do
-  use_frameworks!
+  # speech_to_text 7.x 要求静态 framework 链接 + modular headers；
+  # 否则 Swift plugin 跟 ObjC GeneratedPluginRegistrant 之间的类定义
+  # 会在 module import 时冲突（"has different definitions in different modules"）。
+  use_frameworks! :linkage => :static
+  use_modular_headers!
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do
@@ -39,5 +43,14 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+    # permission_handler 默认每个权限 iOS 编译时"关闭"，要 preprocessor
+    # define 才生效。没 define 时 Permission.microphone.request() 立刻返
+    # 回 denied，UI 层感觉"点按钮没反应"。
+    target.build_configurations.each do |config|
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= [
+        '$(inherited)',
+        'PERMISSION_MICROPHONE=1',
+      ]
+    end
   end
 end

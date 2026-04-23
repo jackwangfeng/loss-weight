@@ -1447,6 +1447,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Save'**
   String get quickSetupSave;
+
+  /// No description provided for @quickSetupAiHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Say it in one line (e.g. \'35yo male, 180cm 82kg, want to cut to 75\') — AI fills the fields below'**
+  String get quickSetupAiHint;
+
+  /// No description provided for @quickSetupAiParse.
+  ///
+  /// In en, this message translates to:
+  /// **'Fill with AI'**
+  String get quickSetupAiParse;
+
+  /// No description provided for @quickSetupAiEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Type or speak something first.'**
+  String get quickSetupAiEmpty;
+
+  /// No description provided for @quickSetupAiFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'AI didn\'t understand. Try again or fill manually.'**
+  String get quickSetupAiFailed;
 }
 
 class _AppLocalizationsDelegate

@@ -47,7 +47,12 @@ dependencies:
   fl_chart: ^0.66.0
 
   # Voice input（语音转文字，iOS/Android/Web 三端通吃，web 走浏览器 SpeechRecognition）
-  speech_to_text: ^6.6.0
+  # 语音：只用 record 录音，转写走云端（backend /v1/ai/transcribe → Gemini）。
+  # 放弃 speech_to_text（iOS Swift/ObjC module 冲突 + Android 老 API 依赖，
+  # 两头都带病）。Gemini 云端效果远好于本地 SFSpeechRecognizer，尤其中文
+  # 口语化 + 数字单位 + 中英混输。
+  flutter_sound: ^9.28.0
+  permission_handler: ^11.3.1
 
   # Markdown 渲染（AI 回复里的 **加粗**、列表、代码块）
   flutter_markdown: ^0.7.1

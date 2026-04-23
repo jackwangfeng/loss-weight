@@ -232,6 +232,60 @@ class AIService {
     }
   }
 
+  /// 把一句话（手敲或语音转写）解析成 profile 字段。后端所有字段可选，
+  /// 未提及就是零值/空串，前端用零值过滤不覆盖已填字段。
+  Future<Map<String, dynamic>> parseProfile({
+    required String text,
+    String? locale,
+  }) async {
+    final response = await _apiService.post('/ai/parse-profile', {
+      'text': text,
+      if (locale != null) 'locale': locale,
+    });
+    if (response.statusCode == 200) {
+      return response.data;
+    } else {
+      throw Exception('Profile parse failed');
+    }
+  }
+
+  /// 云端语音转写：base64 音频 → 纯文本。mime 常见 `audio/mp4` (AAC/m4a)、
+  /// `audio/wav`、`audio/ogg`。
+  Future<Map<String, dynamic>> transcribe({
+    required String audioBase64,
+    String mimeType = 'audio/mp4',
+    String? locale,
+  }) async {
+    final response = await _apiService.post('/ai/transcribe', {
+      'audio_base64': audioBase64,
+      'mime_type': mimeType,
+      if (locale != null) 'locale': locale,
+    });
+    if (response.statusCode == 200) {
+      return response.data;
+    }
+    throw Exception('Transcribe failed');
+  }
+
+  /// 云端语音 → 转写 + profile 结构化（一次 Gemini 调用）。返回的 Map 含
+  /// `transcript`（给 UI 复核）+ gender/age/height/current_weight/target_weight/
+  /// activity_level/confidence 字段。
+  Future<Map<String, dynamic>> transcribeAndParseProfile({
+    required String audioBase64,
+    String mimeType = 'audio/mp4',
+    String? locale,
+  }) async {
+    final response = await _apiService.post('/ai/transcribe-and-parse-profile', {
+      'audio_base64': audioBase64,
+      'mime_type': mimeType,
+      if (locale != null) 'locale': locale,
+    });
+    if (response.statusCode == 200) {
+      return response.data;
+    }
+    throw Exception('Transcribe-and-parse failed');
+  }
+
   /// 列出用户长期记忆事实
   Future<List<UserFact>> listUserFacts({required int userId}) async {
     final response = await _apiService.get(

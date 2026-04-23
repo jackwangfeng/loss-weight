@@ -316,5 +316,9 @@
   "quickSetupBannerHint": "30 seconds",
   "quickSetupTitle": "Quick setup",
   "quickSetupSubtitle": "These drive your macro targets and AI advice. Skip anything — you can edit later in Profile.",
-  "quickSetupSave": "Save"
+  "quickSetupSave": "Save",
+  "quickSetupAiHint": "Say it in one line (e.g. '35yo male, 180cm 82kg, want to cut to 75') — AI fills the fields below",
+  "quickSetupAiParse": "Fill with AI",
+  "quickSetupAiEmpty": "Type or speak something first.",
+  "quickSetupAiFailed": "AI didn't understand. Try again or fill manually."
 }

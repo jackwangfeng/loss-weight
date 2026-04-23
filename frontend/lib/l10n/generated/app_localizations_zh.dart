@@ -756,4 +756,16 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get quickSetupSave => '保存';
+
+  @override
+  String get quickSetupAiHint => '用一句话描述自己（例：35 岁男 180cm 82kg 想减到 75），AI 自动填下面';
+
+  @override
+  String get quickSetupAiParse => '让 AI 填';
+
+  @override
+  String get quickSetupAiEmpty => '先输入或说一句话。';
+
+  @override
+  String get quickSetupAiFailed => 'AI 没看懂，再试一次或手动填。';
 }

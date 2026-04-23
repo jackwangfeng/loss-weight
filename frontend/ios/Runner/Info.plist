@@ -45,6 +45,21 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Beta 期临时放行纯 HTTP 到 AWS Singapore 后端（无 TLS）。
+	     上架前必须换 HTTPS + 删除这一段。 -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>13.215.200.80</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSIncludesSubdomains</key>
+				<false/>
+			</dict>
+		</dict>
+	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>用于拍摄食物、体重秤照片，交给 AI 识别。</string>
 	<key>NSPhotoLibraryUsageDescription</key>

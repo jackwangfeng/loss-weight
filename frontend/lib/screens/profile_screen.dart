@@ -3,9 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../providers/auth_provider.dart';
+import '../providers/locale_provider.dart';
 import '../providers/user_provider.dart';
 import '../models/user_profile.dart';
+import '../services/ai_service.dart';
 import '../utils/labels.dart';
+import '../widgets/voice_input_button.dart';
 import 'login_screen.dart';
 import 'settings_screen.dart';
 
@@ -267,6 +270,12 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   late int _activityLevel;
   bool _submitting = false;
 
+  // AI 一句话入口：跟 quick_setup 一致的 UX，调 /ai/parse-profile
+  // 结构化返回 → 覆盖当前**空**的字段（已手动填的不覆盖）。
+  final TextEditingController _aiInput = TextEditingController();
+  final AIService _ai = AIService();
+  bool _aiParsing = false;
+
   @override
   void initState() {
     super.initState();
@@ -294,7 +303,56 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     _tgtProtein.dispose();
     _tgtCarbs.dispose();
     _tgtFat.dispose();
+    _aiInput.dispose();
     super.dispose();
+  }
+
+  /// 应用 parse-profile / transcribe-and-parse-profile 的结构化结果到表单。
+  /// 零值字段（AI 认为没提到的）不覆盖；非零字段一律覆盖。
+  void _applyParsed(Map<String, dynamic> res) {
+    final g = (res['gender'] as String?) ?? '';
+    final age = (res['age'] as num?)?.toInt() ?? 0;
+    final h = (res['height'] as num?)?.toDouble() ?? 0;
+    final cw = (res['current_weight'] as num?)?.toDouble() ?? 0;
+    final tw = (res['target_weight'] as num?)?.toDouble() ?? 0;
+    final al = (res['activity_level'] as num?)?.toInt() ?? 0;
+    if (!mounted) return;
+    setState(() {
+      if (g == 'male' || g == 'female') _gender = g;
+      if (age > 0) _birthday = DateTime(DateTime.now().year - age, 1, 1);
+      if (h > 0) _height.text = h.toStringAsFixed(0);
+      if (cw > 0) _curWeight.text = cw.toStringAsFixed(1);
+      if (tw > 0) _tgtWeight.text = tw.toStringAsFixed(1);
+      if (al >= 1 && al <= 5) _activityLevel = al;
+    });
+  }
+
+  Future<void> _aiParse() async {
+    final text = _aiInput.text.trim();
+    final l10n = AppLocalizations.of(context);
+    if (text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.quickSetupAiEmpty)),
+      );
+      return;
+    }
+    setState(() => _aiParsing = true);
+    try {
+      final res = await _ai.parseProfile(
+        text: text,
+        locale: effectiveAiLocale(context),
+      );
+      if (!mounted) return;
+      _applyParsed(res);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.quickSetupAiFailed)),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _aiParsing = false);
+    }
   }
 
   Future<void> _pickBirthday() async {
@@ -423,6 +481,40 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
         ],
       ),
       const SizedBox(height: 8),
+
+      // AI 一句话入口——覆盖空字段的性别 / 年龄 / 身高 / 体重 / 活动水平。
+      TextField(
+        controller: _aiInput,
+        maxLines: 2,
+        decoration: deco(l10n.quickSetupAiHint),
+      ),
+      const SizedBox(height: 8),
+      Row(
+        children: [
+          VoiceInputButton(
+            targetController: _aiInput,
+            onProfileParsed: _applyParsed,
+            localeId:
+                effectiveAiLocale(context) == 'zh' ? 'zh-CN' : 'en-US',
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: _aiParsing ? null : _aiParse,
+              icon: _aiParsing
+                  ? const SizedBox(
+                      width: 14, height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.auto_awesome, size: 18),
+              label: Text(l10n.quickSetupAiParse),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 16),
+      const Divider(height: 1),
+      const SizedBox(height: 16),
 
       TextField(controller: _nick, decoration: deco(l10n.profileNickname)),
       const SizedBox(height: 12),

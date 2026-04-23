@@ -10,8 +10,10 @@ class ApiService {
   String _baseUrl = _defaultBaseUrl();
   String? _token;
 
-  // Web 跟随页面 origin；真机通过 LAN IP 连宿主 Mac（localhost 在手机上指手机自己）。
-  // 临时硬编码到 LAN IP；生产/其他网段用 --dart-define=API_BASE=... 覆盖。
+  // Web 跟随页面 origin；真机默认连 AWS Singapore 上的 beta 后端
+  // （http，还没上 TLS — Info.plist 里 NSAppTransportSecurity 放行这个域）。
+  // 本地开发用 --dart-define=API_BASE=http://localhost:8000/v1 覆盖。
+  static const _kBetaBackend = 'http://13.215.200.80:8000/v1';
   static String _defaultBaseUrl() {
     const override = String.fromEnvironment('API_BASE');
     if (override.isNotEmpty) return override;
@@ -22,7 +24,7 @@ class ApiService {
       }
       return 'http://localhost:8000/v1';
     }
-    return 'http://192.168.0.157:8000/v1';
+    return _kBetaBackend;
   }
 
   String get baseUrl => _baseUrl;

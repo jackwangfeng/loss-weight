@@ -1,22 +1,38 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:flutter_sound/flutter_sound.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../l10n/generated/app_localizations.dart';
+import '../services/ai_service.dart';
 
-/// 语音输入按钮：点一下开始，再点一下停止；转写过程中实时写入
-/// 绑定的 TextEditingController，结束后可触发 onFinalized 回调（一般用于
-/// 自动跑 AI 估算/解析）。
+/// Cloud-based voice input. Records mic audio locally (`flutter_sound`)
+/// then POSTs to the backend for Gemini transcription (and optionally
+/// structured profile parsing in the same round-trip).
 ///
-/// 三端支持：
-///   - iOS / Android：native SFSpeechRecognizer / SpeechRecognizer
-///   - Web：浏览器 SpeechRecognition API（Chrome/Edge 原生，Firefox 需要 flag）
+/// Two modes:
+///   • Default (`targetController` only): call /v1/ai/transcribe — plain text
+///     lands in the controller; caller's `onFinalized` fires once done.
+///   • Profile mode (`onProfileParsed` provided): call
+///     /v1/ai/transcribe-and-parse-profile — structured fields go to the
+///     callback; transcript still fills the controller for user verification.
+///
+/// Why cloud: native STT (SFSpeechRecognizer / Android SpeechRecognizer)
+/// is weak on CJK + mixed language + digits/units. Gemini 2.5 Flash audio
+/// is ~$0.015/min and far more accurate for those cases.
 class VoiceInputButton extends StatefulWidget {
   final TextEditingController targetController;
   final VoidCallback? onFinalized;
-  final String localeId;
+  final void Function(Map<String, dynamic> parsed)? onProfileParsed;
+  final String localeId; // "zh-CN" / "en-US"
+
   const VoiceInputButton({
     Key? key,
     required this.targetController,
     this.onFinalized,
+    this.onProfileParsed,
     this.localeId = 'en-US',
   }) : super(key: key);
 
@@ -24,13 +40,16 @@ class VoiceInputButton extends StatefulWidget {
   State<VoiceInputButton> createState() => _VoiceInputButtonState();
 }
 
+enum _VoiceState { idle, recording, uploading }
+
 class _VoiceInputButtonState extends State<VoiceInputButton>
     with SingleTickerProviderStateMixin {
-  final stt.SpeechToText _speech = stt.SpeechToText();
+  final FlutterSoundRecorder _recorder = FlutterSoundRecorder();
+  final AIService _ai = AIService();
+  _VoiceState _state = _VoiceState.idle;
+  String? _currentPath;
+  bool _opened = false;
   late final AnimationController _pulse;
-  bool _initialized = false;
-  bool _available = false;
-  bool _listening = false;
 
   @override
   void initState() {
@@ -39,123 +58,148 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
       vsync: this,
       duration: const Duration(milliseconds: 900),
     )..repeat(reverse: true);
-    _init();
-  }
-
-  Future<void> _init() async {
-    try {
-      _available = await _speech.initialize(
-        onStatus: (s) {
-          if ((s == 'notListening' || s == 'done') && mounted) {
-            setState(() => _listening = false);
-          }
-        },
-        onError: (err) {
-          if (!mounted) return;
-          setState(() => _listening = false);
-          // error_no_match / error_speech_timeout 算常见情况，不弹
-          if (err.errorMsg.contains('no_match') ||
-              err.errorMsg.contains('no_speech') ||
-              err.errorMsg.contains('timeout')) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Voice recognition error: ${err.errorMsg}')),
-          );
-        },
-      );
-    } catch (_) {
-      _available = false;
-    }
-    if (mounted) setState(() => _initialized = true);
-  }
-
-  Future<void> _toggle() async {
-    if (!_initialized) return;
-    if (!_available) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppLocalizations.of(context).voiceNotAvailable)),
-      );
-      return;
-    }
-    if (_listening) {
-      await _speech.stop();
-      if (mounted) setState(() => _listening = false);
-      if (widget.targetController.text.trim().isNotEmpty) {
-        widget.onFinalized?.call();
-      }
-      return;
-    }
-    setState(() => _listening = true);
-    await _speech.listen(
-      onResult: (result) {
-        widget.targetController.text = result.recognizedWords;
-        widget.targetController.selection = TextSelection.collapsed(
-          offset: result.recognizedWords.length,
-        );
-        if (result.finalResult) {
-          if (mounted) setState(() => _listening = false);
-          if (result.recognizedWords.trim().isNotEmpty) {
-            widget.onFinalized?.call();
-          }
-        }
-      },
-      localeId: widget.localeId,
-      partialResults: true,
-      listenMode: stt.ListenMode.dictation,
-      pauseFor: const Duration(seconds: 3),
-      listenFor: const Duration(seconds: 30),
-    );
   }
 
   @override
   void dispose() {
-    _speech.stop();
     _pulse.dispose();
+    if (_opened) {
+      _recorder.closeRecorder();
+    }
     super.dispose();
+  }
+
+  Future<void> _ensureOpen() async {
+    if (_opened) return;
+    await _recorder.openRecorder();
+    _opened = true;
+  }
+
+  Future<void> _toggle() async {
+    if (_state == _VoiceState.recording) {
+      await _stopAndUpload();
+    } else if (_state == _VoiceState.idle) {
+      await _start();
+    }
+  }
+
+  Future<void> _start() async {
+    final l10n = AppLocalizations.of(context);
+    try {
+      // Android runtime permission for mic. iOS picks up NSMicrophoneUsageDescription
+      // via flutter_sound; but permission_handler works on iOS too and gives
+      // a consistent API.
+      final status = await Permission.microphone.request();
+      if (!status.isGranted) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(l10n.voicePermissionDenied)),
+          );
+        }
+        return;
+      }
+      await _ensureOpen();
+      final tmp = await getTemporaryDirectory();
+      _currentPath =
+          '${tmp.path}/rec_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      await _recorder.startRecorder(
+        toFile: _currentPath!,
+        codec: Codec.aacMP4,     // .m4a container, Gemini audio/mp4 happy
+        sampleRate: 16000,       // 16 kHz is plenty for speech, small payload
+        numChannels: 1,
+      );
+      if (mounted) setState(() => _state = _VoiceState.recording);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('录音失败: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _stopAndUpload() async {
+    setState(() => _state = _VoiceState.uploading);
+    try {
+      final path = await _recorder.stopRecorder() ?? _currentPath;
+      if (path == null) {
+        _reset();
+        return;
+      }
+      final bytes = await File(path).readAsBytes();
+      if (bytes.isEmpty) {
+        _reset();
+        return;
+      }
+      final b64 = base64Encode(bytes);
+      final localeShort = widget.localeId.split('-').first; // en-US → en
+
+      if (widget.onProfileParsed != null) {
+        final res = await _ai.transcribeAndParseProfile(
+          audioBase64: b64,
+          mimeType: 'audio/mp4',
+          locale: localeShort,
+        );
+        final transcript = (res['transcript'] as String?) ?? '';
+        if (transcript.isNotEmpty) {
+          widget.targetController.text = transcript;
+        }
+        widget.onProfileParsed!(res);
+      } else {
+        final res = await _ai.transcribe(
+          audioBase64: b64,
+          mimeType: 'audio/mp4',
+          locale: localeShort,
+        );
+        final text = (res['text'] as String?) ?? '';
+        widget.targetController.text = text;
+        widget.onFinalized?.call();
+      }
+      try {
+        await File(path).delete();
+      } catch (_) {}
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('语音识别失败: $e')),
+        );
+      }
+    } finally {
+      _reset();
+    }
+  }
+
+  void _reset() {
+    if (mounted) setState(() => _state = _VoiceState.idle);
+    _currentPath = null;
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_initialized) {
-      return const IconButton(
-        icon: SizedBox(
-          width: 16, height: 16,
+    final scheme = Theme.of(context).colorScheme;
+    Widget icon;
+    VoidCallback? onPressed = _toggle;
+    switch (_state) {
+      case _VoiceState.idle:
+        icon = Icon(Icons.mic, color: scheme.primary);
+        break;
+      case _VoiceState.recording:
+        icon = AnimatedBuilder(
+          animation: _pulse,
+          builder: (_, __) => Icon(
+            Icons.stop_circle,
+            color: Color.lerp(scheme.primary, scheme.error, _pulse.value),
+          ),
+        );
+        break;
+      case _VoiceState.uploading:
+        icon = const SizedBox(
+          width: 20, height: 20,
           child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-        onPressed: null,
-      );
+        );
+        onPressed = null;
+        break;
     }
-    final l10n = AppLocalizations.of(context);
-    return IconButton(
-      tooltip: _listening ? l10n.voiceTapToStop : l10n.voiceTapToSpeak,
-      onPressed: _available ? _toggle : null,
-      icon: AnimatedBuilder(
-        animation: _pulse,
-        builder: (ctx, _) {
-          final listeningColor = Color.lerp(
-            Colors.red.shade700,
-            Colors.red.shade300,
-            _pulse.value,
-          );
-          return Stack(
-            alignment: Alignment.center,
-            children: [
-              if (_listening)
-                Container(
-                  width: 32 + 8 * _pulse.value,
-                  height: 32 + 8 * _pulse.value,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.red.withValues(alpha: 0.15 * _pulse.value),
-                  ),
-                ),
-              Icon(
-                _listening ? Icons.mic : Icons.mic_none,
-                color: _listening ? listeningColor : null,
-              ),
-            ],
-          );
-        },
-      ),
-    );
+    return IconButton(icon: icon, onPressed: onPressed);
   }
 }

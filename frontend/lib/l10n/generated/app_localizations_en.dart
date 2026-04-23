@@ -767,4 +767,18 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get quickSetupSave => 'Save';
+
+  @override
+  String get quickSetupAiHint =>
+      'Say it in one line (e.g. \'35yo male, 180cm 82kg, want to cut to 75\') — AI fills the fields below';
+
+  @override
+  String get quickSetupAiParse => 'Fill with AI';
+
+  @override
+  String get quickSetupAiEmpty => 'Type or speak something first.';
+
+  @override
+  String get quickSetupAiFailed =>
+      'AI didn\'t understand. Try again or fill manually.';
 }
