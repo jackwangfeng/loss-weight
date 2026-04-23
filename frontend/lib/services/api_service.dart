@@ -69,6 +69,24 @@ class ApiService {
     }
   }
 
+  /// Multipart/form-data 上传。跟 post 分开：post 强设 Content-Type=
+  /// application/json 会打断 Dio 对 FormData 的 boundary 自动协商。
+  Future<Response> postFormData(String path, FormData data) async {
+    try {
+      final headers = <String, dynamic>{
+        if (_token != null) 'Authorization': 'Bearer $_token',
+      };
+      return await _dio.post(
+        '$_baseUrl$path',
+        data: data,
+        options: Options(headers: headers),
+      );
+    } on DioException catch (e) {
+      _handleError(e);
+      rethrow;
+    }
+  }
+
   Future<Response> put(String path, dynamic data) async {
     try {
       return await _dio.put(

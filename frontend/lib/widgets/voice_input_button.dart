@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_sound/flutter_sound.dart';
@@ -131,12 +130,11 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
         _reset();
         return;
       }
-      final b64 = base64Encode(bytes);
       final localeShort = widget.localeId.split('-').first; // en-US → en
 
       if (widget.onProfileParsed != null) {
         final res = await _ai.transcribeAndParseProfile(
-          audioBase64: b64,
+          audioBytes: bytes,
           mimeType: 'audio/mp4',
           locale: localeShort,
         );
@@ -147,7 +145,7 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
         widget.onProfileParsed!(res);
       } else {
         final res = await _ai.transcribe(
-          audioBase64: b64,
+          audioBytes: bytes,
           mimeType: 'audio/mp4',
           locale: localeShort,
         );

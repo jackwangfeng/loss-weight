@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:dio/dio.dart';
 import 'package:http/http.dart' as http;
 import '../models/ai_chat.dart';
 import '../models/user_fact.dart';
@@ -249,21 +250,23 @@ class AIService {
     }
   }
 
-  /// 云端语音转写：base64 音频 → 纯文本。mime 常见 `audio/mp4` (AAC/m4a)、
-  /// `audio/wav`、`audio/ogg`。
+  /// 云端语音转写：音频**原始字节**以 multipart/form-data 上传（省 33%
+  /// 字节 vs. base64 + 省客户端 encode CPU）。backend 自己 base64 给
+  /// Gemini（内网段无所谓）。mime 常见 `audio/mp4`、`audio/wav`、`audio/ogg`。
   Future<Map<String, dynamic>> transcribe({
-    required String audioBase64,
+    required List<int> audioBytes,
     String mimeType = 'audio/mp4',
     String? locale,
   }) async {
-    final response = await _apiService.post('/ai/transcribe', {
-      'audio_base64': audioBase64,
+    final form = FormData.fromMap({
+      'audio': MultipartFile.fromBytes(audioBytes,
+          filename: 'rec.m4a',
+          contentType: DioMediaType.parse(mimeType)),
       'mime_type': mimeType,
       if (locale != null) 'locale': locale,
     });
-    if (response.statusCode == 200) {
-      return response.data;
-    }
+    final response = await _apiService.postFormData('/ai/transcribe', form);
+    if (response.statusCode == 200) return response.data;
     throw Exception('Transcribe failed');
   }
 
@@ -271,18 +274,20 @@ class AIService {
   /// `transcript`（给 UI 复核）+ gender/age/height/current_weight/target_weight/
   /// activity_level/confidence 字段。
   Future<Map<String, dynamic>> transcribeAndParseProfile({
-    required String audioBase64,
+    required List<int> audioBytes,
     String mimeType = 'audio/mp4',
     String? locale,
   }) async {
-    final response = await _apiService.post('/ai/transcribe-and-parse-profile', {
-      'audio_base64': audioBase64,
+    final form = FormData.fromMap({
+      'audio': MultipartFile.fromBytes(audioBytes,
+          filename: 'rec.m4a',
+          contentType: DioMediaType.parse(mimeType)),
       'mime_type': mimeType,
       if (locale != null) 'locale': locale,
     });
-    if (response.statusCode == 200) {
-      return response.data;
-    }
+    final response = await _apiService.postFormData(
+        '/ai/transcribe-and-parse-profile', form);
+    if (response.statusCode == 200) return response.data;
     throw Exception('Transcribe-and-parse failed');
   }
 
