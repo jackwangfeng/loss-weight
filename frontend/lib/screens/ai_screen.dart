@@ -177,6 +177,7 @@ class _AISScreenState extends State<AIScreen> {
   Future<void> _sendMessage() async {
     final message = _messageController.text.trim();
     if (message.isEmpty) return;
+    FocusScope.of(context).unfocus();
     final l10n = AppLocalizations.of(context);
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -356,7 +357,10 @@ class _AISScreenState extends State<AIScreen> {
       appBar: AppBar(
         title: Text(l10n.coachTitle),
       ),
-      body: _isLoading
+      body: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        behavior: HitTestBehavior.opaque,
+        child: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
@@ -402,6 +406,7 @@ class _AISScreenState extends State<AIScreen> {
                 _buildInputArea(l10n),
               ],
             ),
+      ),
     );
   }
 
