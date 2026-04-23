@@ -62,6 +62,8 @@ func Load(configPath string) (*Config, error) {
 	_ = viper.BindEnv("secret_key", "SECRET_KEY")
 	_ = viper.BindEnv("google_client_id", "GOOGLE_CLIENT_ID")
 	_ = viper.BindEnv("google_ios_client_id", "GOOGLE_IOS_CLIENT_ID")
+	_ = viper.BindEnv("database_url", "DATABASE_URL")
+	_ = viper.BindEnv("redis_url", "REDIS_URL")
 
 	// Try to read config file (optional)
 	if err := viper.ReadInConfig(); err != nil {

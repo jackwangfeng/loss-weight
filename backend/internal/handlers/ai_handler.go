@@ -57,6 +57,51 @@ func (h *AIHandler) ParseWeight(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+func (h *AIHandler) ParseProfile(c *gin.Context) {
+	var req services.ParseProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	result, err := h.service.ParseProfileFromText(req.Text, req.Locale)
+	if err != nil {
+		h.logger.Error("parse profile failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "个人信息解析失败"})
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *AIHandler) Transcribe(c *gin.Context) {
+	var req services.TranscribeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	result, err := h.service.TranscribeAudio(&req)
+	if err != nil {
+		h.logger.Error("transcribe failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "语音转写失败"})
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *AIHandler) TranscribeAndParseProfile(c *gin.Context) {
+	var req services.TranscribeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	result, err := h.service.TranscribeAndParseProfile(&req)
+	if err != nil {
+		h.logger.Error("transcribe-and-parse failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "语音解析失败"})
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
 func (h *AIHandler) EstimateExercise(c *gin.Context) {
 	var req services.EstimateExerciseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

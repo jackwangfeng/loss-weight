@@ -1,0 +1,44 @@
+# Production image for AWS App Runner.
+# Everything secret-like (DB URL, Gemini key, JWT secret) is injected via env
+# vars at runtime — the image itself holds no credentials.
+# ----------------------------------------------------------------------------
+
+FROM m.daocloud.io/docker.io/library/golang:1.25-alpine AS builder
+
+WORKDIR /app
+
+RUN apk add --no-cache git
+
+ENV GOPROXY=https://goproxy.cn,direct
+
+# Cache go modules as a separate layer.
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+# Static binary, stripped, for faster cold starts + tiny final image.
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w" \
+    -o /out/server cmd/server/main.go
+
+# ----------------------------------------------------------------------------
+FROM m.daocloud.io/docker.io/library/alpine:latest
+
+RUN apk --no-cache add ca-certificates tzdata && \
+    addgroup -S app && adduser -S app -G app
+
+WORKDIR /app
+
+COPY --from=builder /out/server /app/server
+# Keep a baseline yaml so viper has a file; env vars override every
+# meaningful field (see config.go BindEnv calls).
+COPY --from=builder /app/config.example.yaml /app/config.yaml
+
+USER app
+
+EXPOSE 8000
+
+ENV GIN_MODE=release
+
+CMD ["/app/server", "-config", "config"]

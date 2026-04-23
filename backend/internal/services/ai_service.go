@@ -97,6 +97,50 @@ type EstimateNutritionRequest struct {
 	Locale string `json:"locale"`
 }
 
+type ParseProfileRequest struct {
+	Text   string `json:"text" binding:"required"`
+	Locale string `json:"locale"`
+}
+
+// TranscribeRequest: 音频 base64 送 Gemini STT。mime 如 "audio/mp4"、
+// "audio/aac"、"audio/wav"、"audio/ogg"、"audio/mpeg"；移动端推荐 m4a/AAC。
+type TranscribeRequest struct {
+	AudioBase64 string `json:"audio_base64" binding:"required"`
+	MimeType    string `json:"mime_type"` // default: audio/mp4
+	Locale      string `json:"locale"`
+}
+
+type TranscribeResponse struct {
+	Text       string  `json:"text"`
+	Confidence float32 `json:"confidence"`
+}
+
+// TranscribeAndParseProfileResponse: 音频 → 转写 + profile 字段。
+// transcript 字段让前端能复核（确认识别对不对），其他字段跟
+// ParseProfileResponse 对齐。
+type TranscribeAndParseProfileResponse struct {
+	Transcript    string  `json:"transcript"`
+	Gender        string  `json:"gender"`
+	Age           int     `json:"age"`
+	Height        float32 `json:"height"`
+	CurrentWeight float32 `json:"current_weight"`
+	TargetWeight  float32 `json:"target_weight"`
+	ActivityLevel int     `json:"activity_level"`
+	Confidence    float32 `json:"confidence"`
+}
+
+// ParseProfileResponse: 结构化的 profile 字段。所有可选，LLM 没信息就留零值。
+// 前端只填充 ParseProfileResponse 里非零 / 非空的字段。
+type ParseProfileResponse struct {
+	Gender        string  `json:"gender"`         // "male" / "female" / ""
+	Age           int     `json:"age"`            // 0 = 未提及
+	Height        float32 `json:"height"`         // cm, 0 = 未提及
+	CurrentWeight float32 `json:"current_weight"` // kg, 0 = 未提及
+	TargetWeight  float32 `json:"target_weight"`  // kg, 0 = 未提及
+	ActivityLevel int     `json:"activity_level"` // 1-5, 0 = 未提及
+	Confidence    float32 `json:"confidence"`
+}
+
 type ParseWeightRequest struct {
 	Text   string `json:"text" binding:"required"`
 	Locale string `json:"locale"`
@@ -236,8 +280,11 @@ func (s *AIService) RecognizeFood(req *RecognizeFoodRequest) (*RecognizeFoodResp
 			},
 		},
 		"generationConfig": map[string]interface{}{
-			"temperature":     0.3,
-			"maxOutputTokens": 500,
+			"temperature":      0.3,
+			"maxOutputTokens":  500,
+			// Force strict JSON output; stops Gemini from wrapping in
+			// ```json ... ``` fences or prefacing with prose.
+			"responseMimeType": "application/json",
 		},
 	}
 
@@ -306,8 +353,12 @@ func (s *AIService) RecognizeFood(req *RecognizeFoodRequest) (*RecognizeFoodResp
 		Confidence    float32 `json:"confidence"`
 	}
 
-	if err := json.Unmarshal([]byte(responseText), &foodInfo); err != nil {
-		s.logger.Error("failed to parse food info JSON", zap.Error(err))
+	// responseMimeType=application/json 会让 Gemini 返回干净 JSON，但偶尔还是
+	// 会出现截断或空串（例如安全过滤器触发）；再过一层 fence 清理作为兜底。
+	cleanText := stripMarkdownCodeFence(responseText)
+	if err := json.Unmarshal([]byte(cleanText), &foodInfo); err != nil {
+		s.logger.Error("failed to parse food info JSON",
+			zap.Error(err), zap.String("raw", responseText))
 		// Parse failed — return default shape.
 		return &RecognizeFoodResponse{
 			FoodName:      "Unknown food",
@@ -415,6 +466,216 @@ Rules:
 	var out ParseWeightResponse
 	if err := json.Unmarshal([]byte(jsonText), &out); err != nil {
 		return nil, fmt.Errorf("failed to parse LLM response: %w (raw: %s)", err, resp.Content)
+	}
+	return &out, nil
+}
+
+// ParseProfileFromText: 把一句话（文字或语音转写）解析成结构化 profile。
+// 设计意图：onboarding 快速设置页放一个"用一句话描述自己"的输入，用户
+// 随便说 "35 岁男，180cm 82kg 想减到 75"，后端分出字段，前端自动填表。
+// 所有字段可选——LLM 没把握就返回零值，前端用零值过滤不覆盖已填字段。
+func (s *AIService) ParseProfileFromText(text, locale string) (*ParseProfileResponse, error) {
+	if s.llmAPIKey == "" {
+		if !s.allowMock {
+			return nil, errLLMNotConfigured
+		}
+		s.logger.Warn("LLM API not configured — parse-profile returning mock (debug mode)")
+		return &ParseProfileResponse{Confidence: 0.5}, nil
+	}
+
+	prompt := fmt.Sprintf(`Parse body/profile fields from the text below. JSON ONLY — no markdown fence, no prose.
+
+Text: %s
+
+JSON schema (every field is optional; emit 0 / empty string when the text
+doesn't mention that field — DO NOT guess):
+{
+  "gender": "male" | "female" | "",
+  "age": integer years (0 if not mentioned),
+  "height": integer cm (0 if not mentioned),
+  "current_weight": kg as number (0 if not mentioned),
+  "target_weight": kg as number (0 if not mentioned),
+  "activity_level": 1..5 (0 if not mentioned; 1=sedentary, 2=light,
+                    3=moderate, 4=active, 5=very active),
+  "confidence": 0.0-1.0
+}
+
+Rules:
+- Numbers WITHOUT units.
+- Treat "男 / male / 哥们 / 老哥" as male; "女 / female / 妹子" as female.
+- Height hints: "cm", "公分", "米" (convert 1.8米 → 180).
+- Weight hints: "kg", "公斤", "斤" (斤 = 0.5kg — convert to kg).
+- "Want to be X / 想减到 X / 目标 X" → target_weight.
+- "Currently / 现在 / 目前" → current_weight.
+- If only one weight number and no direction → current_weight.
+- Training frequency hints: "每周 3 次 / 撸铁 / HIIT" → activity_level 4;
+  "每天走路 / 偶尔动" → 2; "坐办公室不动" → 1. Don't guess if unclear.
+- User's interface language is %s — these hints may also appear in that
+  language.`, text, languageName(locale))
+
+	resp, err := s.callLLM([]ChatMessage{{Role: "user", Content: prompt}})
+	if err != nil {
+		return nil, err
+	}
+	jsonText := stripMarkdownCodeFence(resp.Content)
+	var out ParseProfileResponse
+	if err := json.Unmarshal([]byte(jsonText), &out); err != nil {
+		return nil, fmt.Errorf("failed to parse LLM response: %w (raw: %s)", err, resp.Content)
+	}
+	return &out, nil
+}
+
+// geminiAudioCall: 共用逻辑——base64 audio + prompt → Gemini text response。
+// `forceJSON=true` 走 responseMimeType=application/json；false 时 Gemini
+// 输出纯文本（用于转写）。返回原始 text（JSON 路径调用方再自己 unmarshal）。
+func (s *AIService) geminiAudioCall(audioB64, mimeType, prompt string, forceJSON bool, maxOutputTokens int) (string, error) {
+	if s.llmAPIKey == "" {
+		return "", errLLMNotConfigured
+	}
+	apiURL := s.visionAPIURL
+	if apiURL == "" {
+		apiURL = defaultGeminiURL
+	}
+	if mimeType == "" {
+		mimeType = "audio/mp4"
+	}
+
+	genConfig := map[string]interface{}{
+		"temperature":     0.0, // 转写任务零温度，减少幻觉
+		"maxOutputTokens": maxOutputTokens,
+	}
+	if forceJSON {
+		genConfig["responseMimeType"] = "application/json"
+	}
+
+	payload := map[string]interface{}{
+		"contents": []map[string]interface{}{
+			{
+				"role": "user",
+				"parts": []map[string]interface{}{
+					{"text": prompt},
+					{"inline_data": map[string]string{
+						"mime_type": mimeType,
+						"data":      audioB64,
+					}},
+				},
+			},
+		},
+		"generationConfig": genConfig,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	client := &http.Client{Timeout: 60 * time.Second}
+	url := fmt.Sprintf("%s?key=%s", apiURL, s.visionAPIKey)
+	if s.visionAPIKey == "" {
+		url = fmt.Sprintf("%s?key=%s", apiURL, s.llmAPIKey)
+	}
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("audio API %d: %s", resp.StatusCode, string(b))
+	}
+	var result struct {
+		Candidates []struct {
+			Content struct {
+				Parts []struct {
+					Text string `json:"text"`
+				} `json:"parts"`
+			} `json:"content"`
+		} `json:"candidates"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", err
+	}
+	if len(result.Candidates) == 0 || len(result.Candidates[0].Content.Parts) == 0 {
+		return "", errors.New("no response from audio API")
+	}
+	return result.Candidates[0].Content.Parts[0].Text, nil
+}
+
+// TranscribeAudio: 把 base64 音频送 Gemini 原样转写。不做结构化、不加标点
+// 修正、不 paraphrase——字对字。
+func (s *AIService) TranscribeAudio(req *TranscribeRequest) (*TranscribeResponse, error) {
+	if s.llmAPIKey == "" {
+		if !s.allowMock {
+			return nil, errLLMNotConfigured
+		}
+		s.logger.Warn("LLM not configured — transcribe returning mock")
+		return &TranscribeResponse{Text: "(mock transcription)", Confidence: 0.5}, nil
+	}
+	lang := languageName(req.Locale)
+	prompt := fmt.Sprintf(`Transcribe the attached audio verbatim into %s.
+Output ONLY the transcription text — no prose, no quotes, no "Transcript:" prefix.
+Preserve numbers and units as spoken (e.g. "82 公斤", "72.5kg").
+If the audio contains no speech, output an empty line.`, lang)
+
+	text, err := s.geminiAudioCall(req.AudioBase64, req.MimeType, prompt, false, 500)
+	if err != nil {
+		s.logger.Error("transcribe failed", zap.Error(err))
+		return nil, err
+	}
+	return &TranscribeResponse{
+		Text:       strings.TrimSpace(text),
+		Confidence: 0.95, // Gemini 不返回置信度，固定偏乐观值
+	}, nil
+}
+
+// TranscribeAndParseProfile: 一次 Gemini 调用完成音频转写 + profile 结构化。
+// 前端录音后直接拿到填好的表单字段，省一轮 round-trip。
+func (s *AIService) TranscribeAndParseProfile(req *TranscribeRequest) (*TranscribeAndParseProfileResponse, error) {
+	if s.llmAPIKey == "" {
+		if !s.allowMock {
+			return nil, errLLMNotConfigured
+		}
+		return &TranscribeAndParseProfileResponse{Confidence: 0.5}, nil
+	}
+	lang := languageName(req.Locale)
+	prompt := fmt.Sprintf(`Listen to the audio and extract body profile fields. JSON ONLY — no markdown fence.
+
+JSON schema (every field optional; emit 0 / empty string when not mentioned
+— DO NOT guess):
+{
+  "transcript": "verbatim transcription in %s",
+  "gender": "male" | "female" | "",
+  "age": integer years (0 if not mentioned),
+  "height": integer cm (0 if not mentioned),
+  "current_weight": kg number (0 if not mentioned),
+  "target_weight": kg number (0 if not mentioned),
+  "activity_level": 1..5 (0 if not mentioned; 1=sedentary, 2=light,
+                    3=moderate, 4=active, 5=very active),
+  "confidence": 0.0-1.0
+}
+
+Rules:
+- Numbers WITHOUT units in the numeric fields.
+- "男 / male" → male; "女 / female" → female.
+- Convert 1.8米 → 180; convert 164斤 → 82kg (斤 = 0.5kg).
+- "Want to be X / 想减到 X / 目标 X" → target_weight.
+- Current weight if only one number given.
+- "每周 3 次 / 撸铁 / HIIT" → activity_level 4; "坐办公室" → 1.`, lang)
+
+	raw, err := s.geminiAudioCall(req.AudioBase64, req.MimeType, prompt, true, 600)
+	if err != nil {
+		s.logger.Error("transcribe-and-parse failed", zap.Error(err))
+		return nil, err
+	}
+	var out TranscribeAndParseProfileResponse
+	clean := stripMarkdownCodeFence(raw)
+	if err := json.Unmarshal([]byte(clean), &out); err != nil {
+		s.logger.Error("transcribe-and-parse JSON parse failed",
+			zap.Error(err), zap.String("raw", raw))
+		return nil, fmt.Errorf("parse failed: %w", err)
 	}
 	return &out, nil
 }
