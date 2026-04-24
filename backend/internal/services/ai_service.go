@@ -1585,24 +1585,42 @@ func (s *AIService) DeleteUserFact(id uint) error {
 	return s.db.Delete(&models.UserFact{}, id).Error
 }
 
-// GetChatHistory returns messages ordered by created_at ASC. When sinceID > 0,
-// returns only messages with id > sinceID — used by the client for delta
-// refresh on tab focus to avoid refetching the whole thread.
+// GetChatHistory returns messages in chronological (ASC) order.
+//
+// Two query shapes:
+//   - sinceID > 0 : delta fetch. "Messages newer than the caller's cursor."
+//     ORDER BY created_at ASC, natural limit — the caller just wants the gap
+//     filled in.
+//   - sinceID == 0 : initial fetch. "Give me the tail of the conversation."
+//     We want the LAST N messages, not the first N — otherwise a fresh
+//     client (e.g. brand-new install) on a long thread would open to the
+//     oldest 50 messages and miss the whole recent context. We query
+//     ORDER BY id DESC LIMIT N and then reverse the slice before returning,
+//     so the caller still receives ASC order (the API contract clients rely
+//     on for rendering + for computing their own since_id cursor).
 func (s *AIService) GetChatHistory(userID uint, threadID string, limit int, sinceID uint) ([]models.AIChatMessage, error) {
 	var messages []models.AIChatMessage
 	query := s.db.Where("user_id = ? AND thread_id = ?", userID, threadID)
 
 	if sinceID > 0 {
-		query = query.Where("id > ?", sinceID)
+		query = query.Where("id > ?", sinceID).Order("created_at ASC")
+	} else {
+		query = query.Order("id DESC")
 	}
 
 	if limit > 0 {
 		query = query.Limit(limit)
 	}
 
-	if err := query.Order("created_at ASC").Find(&messages).Error; err != nil {
+	if err := query.Find(&messages).Error; err != nil {
 		s.logger.Error("failed to get chat history", zap.Error(err))
 		return nil, err
+	}
+
+	if sinceID == 0 {
+		for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+			messages[i], messages[j] = messages[j], messages[i]
+		}
 	}
 
 	return messages, nil

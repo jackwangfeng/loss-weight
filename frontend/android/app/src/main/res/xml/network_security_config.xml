@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 9+ (API 28+) blocks cleartext HTTP by default.
+  Our beta backend runs on http:// at 13.215.200.80; until TLS is in front of
+  it, explicitly whitelist that host. Production TLS lands → remove this.
+  iOS has the parallel NSAppTransportSecurity exception in Info.plist.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">13.215.200.80</domain>
+        <!-- Also permit localhost so a dev running the app via `flutter run`
+             can hit a local backend. -->
+        <domain includeSubdomains="false">10.0.2.2</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>
