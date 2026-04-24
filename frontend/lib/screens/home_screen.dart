@@ -32,6 +32,10 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
   int _recordsTab = 0;
+  // Key lets us poke AIScreen when the Coach tab gains focus so it can
+  // delta-refresh from the backend instead of showing the stale cached
+  // thread that an IndexedStack-mounted screen would otherwise keep.
+  final GlobalKey<AIScreenState> _aiKey = GlobalKey<AIScreenState>();
 
   @override
   void initState() {
@@ -64,6 +68,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _selectedIndex = 2;
     });
+    _aiKey.currentState?.refreshIfStale();
   }
 
   @override
@@ -80,7 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               DashboardScreen(user: user, isLoggedIn: isLoggedIn),
               RecordsScreen(key: ValueKey('records-$_recordsTab'), initialTab: _recordsTab),
-              const AIScreen(),
+              AIScreen(key: _aiKey),
               const ProfileScreen(),
             ],
           ),
@@ -90,6 +95,12 @@ class _HomeScreenState extends State<HomeScreen> {
               setState(() {
                 _selectedIndex = index;
               });
+              // Tab gaining focus = chance for Coach thread to have
+              // diverged from what we cached. Fire-and-forget; the method
+              // is throttled + self-guarded.
+              if (index == 2) {
+                _aiKey.currentState?.refreshIfStale();
+              }
             },
             destinations: [
               NavigationDestination(

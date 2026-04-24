@@ -1569,9 +1569,16 @@ func (s *AIService) DeleteUserFact(id uint) error {
 	return s.db.Delete(&models.UserFact{}, id).Error
 }
 
-func (s *AIService) GetChatHistory(userID uint, threadID string, limit int) ([]models.AIChatMessage, error) {
+// GetChatHistory returns messages ordered by created_at ASC. When sinceID > 0,
+// returns only messages with id > sinceID — used by the client for delta
+// refresh on tab focus to avoid refetching the whole thread.
+func (s *AIService) GetChatHistory(userID uint, threadID string, limit int, sinceID uint) ([]models.AIChatMessage, error) {
 	var messages []models.AIChatMessage
 	query := s.db.Where("user_id = ? AND thread_id = ?", userID, threadID)
+
+	if sinceID > 0 {
+		query = query.Where("id > ?", sinceID)
+	}
 
 	if limit > 0 {
 		query = query.Limit(limit)

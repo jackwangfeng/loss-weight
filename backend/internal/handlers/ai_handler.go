@@ -328,7 +328,19 @@ func (h *AIHandler) GetChatHistory(c *gin.Context) {
 		return
 	}
 
-	messages, err := h.service.GetChatHistory(uint(userID), threadID, limit)
+	// Optional delta cursor. Client passes the id of its last known message;
+	// server returns only messages with a larger id. 0 / missing = full history.
+	var sinceID uint
+	if s := c.Query("since_id"); s != "" {
+		n, parseErr := strconv.ParseUint(s, 10, 32)
+		if parseErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "无效的 since_id 参数"})
+			return
+		}
+		sinceID = uint(n)
+	}
+
+	messages, err := h.service.GetChatHistory(uint(userID), threadID, limit, sinceID)
 	if err != nil {
 		h.logger.Error("failed to get chat history", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取聊天记录失败"})

@@ -94,11 +94,14 @@ class AIService {
     }
   }
 
-  /// 获取聊天记录
+  /// Fetch thread messages. Pass `sinceId` (the last known server message id)
+  /// to receive only the delta — used by the coach tab on focus to stay fresh
+  /// without refetching the whole conversation.
   Future<List<AIChatMessage>> getChatHistory({
     required int userId,
     required String threadId,
     int limit = 50,
+    int? sinceId,
   }) async {
     final response = await _apiService.get(
       '/ai/chat/history',
@@ -106,6 +109,7 @@ class AIService {
         'user_id': userId.toString(),
         'thread_id': threadId,
         'limit': limit.toString(),
+        if (sinceId != null && sinceId > 0) 'since_id': sinceId.toString(),
       },
     );
 

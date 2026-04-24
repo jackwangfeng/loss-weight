@@ -15,10 +15,10 @@ class AIScreen extends StatefulWidget {
   const AIScreen({Key? key}) : super(key: key);
 
   @override
-  State<AIScreen> createState() => _AISScreenState();
+  State<AIScreen> createState() => AIScreenState();
 }
 
-class _AISScreenState extends State<AIScreen> {
+class AIScreenState extends State<AIScreen> {
   final AIService _aiService = AIService();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -27,6 +27,13 @@ class _AISScreenState extends State<AIScreen> {
   AIChatThread? _currentThread;
   bool _isLoading = false;
   bool _isTyping = false;
+
+  // Delta-refresh plumbing: called by HomeScreen when the Coach tab gains
+  // focus. Avoid overlapping requests + a short cooldown so rapid tab
+  // switching doesn't hammer the backend.
+  bool _isRefreshing = false;
+  DateTime? _lastRefreshAt;
+  static const _refreshCooldown = Duration(seconds: 5);
 
   @override
   void initState() {
@@ -145,6 +152,95 @@ class _AISScreenState extends State<AIScreen> {
       _scrollToBottom();
     } catch (_) {
       // Brief failures shouldn't block chat; stay silent.
+    }
+  }
+
+  /// Called by HomeScreen when the Coach tab gains focus. Cheap path:
+  ///   1. GET /ai/chat/threads (small payload, already sorted updated_at DESC)
+  ///   2. Locate the current thread; if it's gone or we have none, fall back
+  ///      to _loadOrCreateThread.
+  ///   3. Compare backend updated_at + message_count against what we have.
+  ///      No drift → short-circuit (the 99% case).
+  ///   4. Drift → GET /ai/chat/history?since_id=<last local positive id> and
+  ///      append only the delta, dedup by id.
+  ///
+  /// Throttled (5s) and non-reentrant so rapid tab switching can't spam the
+  /// backend.
+  Future<void> refreshIfStale() async {
+    if (_isRefreshing) return;
+    if (_lastRefreshAt != null &&
+        DateTime.now().difference(_lastRefreshAt!) < _refreshCooldown) {
+      return;
+    }
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    if (!authProvider.isLoggedIn) return;
+    final userId = userProvider.currentUser?.id ?? authProvider.userId;
+    if (userId == null) return;
+
+    _isRefreshing = true;
+    try {
+      // First load never happened (e.g. screen cold-built but tab never
+      // visited) — do the full init path and return.
+      if (_currentThread == null) {
+        await _loadOrCreateThread();
+        return;
+      }
+
+      final threads = await _aiService.getUserThreads(userId);
+      AIChatThread? backend;
+      for (final t in threads) {
+        if (t.id == _currentThread!.id) { backend = t; break; }
+      }
+
+      // Current thread was deleted on another device — reset to whatever's
+      // latest.
+      if (backend == null) {
+        await _loadOrCreateThread();
+        return;
+      }
+
+      // Count only server-persisted messages; negative-id entries are local
+      // placeholders (the send flow appends one before the server echoes an
+      // id, and the assistant bubble briefly uses -1 during streaming).
+      final persisted = _messages.where((m) => m.id > 0).toList();
+      final lastId = persisted.isEmpty
+          ? 0
+          : persisted.map((m) => m.id).reduce((a, b) => a > b ? a : b);
+
+      final upstreamNewer =
+          backend.updatedAt.isAfter(_currentThread!.updatedAt) ||
+              backend.messageCount > persisted.length;
+      if (!upstreamNewer) {
+        // Title might still have changed (auto-title), refresh the
+        // lightweight fields so the next check has a tight baseline.
+        if (mounted) setState(() => _currentThread = backend);
+        return;
+      }
+
+      final delta = await _aiService.getChatHistory(
+        userId: userId,
+        threadId: backend.id.toString(),
+        sinceId: lastId,
+      );
+      if (!mounted) return;
+      final existingIds = _messages.map((m) => m.id).toSet();
+      final newOnes = delta.where((m) => !existingIds.contains(m.id)).toList();
+      if (newOnes.isEmpty) {
+        setState(() => _currentThread = backend);
+        return;
+      }
+      setState(() {
+        _messages.addAll(newOnes);
+        _currentThread = backend;
+      });
+      _scrollToBottom();
+    } catch (_) {
+      // Background refresh is best-effort; swallow errors so the user isn't
+      // interrupted with a toast while happily reading a thread.
+    } finally {
+      _isRefreshing = false;
+      _lastRefreshAt = DateTime.now();
     }
   }
 
