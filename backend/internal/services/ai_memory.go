@@ -266,6 +266,24 @@ func (s *AIService) buildSystemPrompt(userID uint, threadID, lang string) string
 				totalCal, totalP, totalC, totalF))
 		}
 
+		if exs := s.loadTodayExercise(userID); len(exs) > 0 {
+			var totalBurned float32
+			parts := make([]string, 0, len(exs))
+			for _, e := range exs {
+				parts = append(parts, fmt.Sprintf("%s %d min (%.0f kcal)",
+					e.kind, e.durationMin, e.caloriesBurned))
+				totalBurned += e.caloriesBurned
+			}
+			sb.WriteString("- Exercise today: " + strings.Join(parts, ", ") + "\n")
+			sb.WriteString(fmt.Sprintf("- Today burned: %.0f kcal\n", totalBurned))
+		}
+
+		// Yesterday at a glance — enables day-over-day context ("你昨天
+		// 蛋白质只吃到 95 g") without dumping every record into the prompt.
+		if y := s.loadDayAggregate(userID, 1); y.hasAny() {
+			sb.WriteString("- Yesterday: " + y.summary() + "\n")
+		}
+
 		if trend := s.loadWeightTrend(userID, 7); trend != "" {
 			sb.WriteString("- Last 7 days weight: " + trend + "\n")
 		}
@@ -340,6 +358,98 @@ func (s *AIService) loadTodayFood(userID uint) []foodLite {
 		})
 	}
 	return out
+}
+
+type exerciseLite struct {
+	kind           string
+	durationMin    int
+	caloriesBurned float32
+}
+
+func (s *AIService) loadTodayExercise(userID uint) []exerciseLite {
+	now := time.Now()
+	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	end := start.Add(24 * time.Hour)
+	var records []models.ExerciseRecord
+	if err := s.db.Where("user_id = ? AND exercised_at >= ? AND exercised_at < ?",
+		userID, start, end).Order("exercised_at").Find(&records).Error; err != nil {
+		return nil
+	}
+	out := make([]exerciseLite, 0, len(records))
+	for _, r := range records {
+		out = append(out, exerciseLite{
+			kind:           r.Type,
+			durationMin:    r.DurationMin,
+			caloriesBurned: r.CaloriesBurned,
+		})
+	}
+	return out
+}
+
+// dayAggregate collapses one calendar day's intake + expenditure + bodyweight
+// into a single object the system prompt can render as one line.
+type dayAggregate struct {
+	eaten      float32
+	protein    float32
+	carbs      float32
+	fat        float32
+	burned     float32
+	meals      int
+	workouts   int
+	weightKg   float32 // last measurement that day, 0 if none
+}
+
+func (d dayAggregate) hasAny() bool {
+	return d.meals > 0 || d.workouts > 0 || d.weightKg > 0
+}
+
+func (d dayAggregate) summary() string {
+	parts := make([]string, 0, 4)
+	if d.meals > 0 {
+		parts = append(parts, fmt.Sprintf("%.0f kcal eaten (P %.0f, C %.0f, F %.0f), %d meal(s)",
+			d.eaten, d.protein, d.carbs, d.fat, d.meals))
+	}
+	if d.workouts > 0 {
+		parts = append(parts, fmt.Sprintf("%.0f kcal burned across %d workout(s)", d.burned, d.workouts))
+	}
+	if d.weightKg > 0 {
+		parts = append(parts, fmt.Sprintf("weighed %.1f kg", d.weightKg))
+	}
+	return strings.Join(parts, "; ")
+}
+
+// loadDayAggregate: daysAgo=0 today, 1 yesterday, ... Used for terse day-over-
+// day context without piping every per-record row through the prompt.
+func (s *AIService) loadDayAggregate(userID uint, daysAgo int) dayAggregate {
+	now := time.Now()
+	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).
+		AddDate(0, 0, -daysAgo)
+	end := start.Add(24 * time.Hour)
+
+	var agg dayAggregate
+	var foods []models.FoodRecord
+	s.db.Where("user_id = ? AND eaten_at >= ? AND eaten_at < ?", userID, start, end).Find(&foods)
+	for _, f := range foods {
+		agg.eaten += f.Calories
+		agg.protein += f.Protein
+		agg.carbs += f.Carbohydrates
+		agg.fat += f.Fat
+	}
+	agg.meals = len(foods)
+
+	var exs []models.ExerciseRecord
+	s.db.Where("user_id = ? AND exercised_at >= ? AND exercised_at < ?", userID, start, end).Find(&exs)
+	for _, e := range exs {
+		agg.burned += e.CaloriesBurned
+	}
+	agg.workouts = len(exs)
+
+	var w models.WeightRecord
+	if err := s.db.Where("user_id = ? AND measured_at >= ? AND measured_at < ?",
+		userID, start, end).Order("measured_at DESC").First(&w).Error; err == nil {
+		agg.weightKg = w.Weight
+	}
+	return agg
 }
 
 func (s *AIService) loadWeightTrend(userID uint, days int) string {
