@@ -10,10 +10,10 @@ class ApiService {
   String _baseUrl = _defaultBaseUrl();
   String? _token;
 
-  // Web 跟随页面 origin；真机默认连 AWS Singapore 上的 beta 后端
-  // （http，还没上 TLS — Info.plist 里 NSAppTransportSecurity 放行这个域）。
-  // 本地开发用 --dart-define=API_BASE=http://localhost:8000/v1 覆盖。
-  static const _kBetaBackend = 'http://13.215.200.80:8000/v1';
+  // Real devices default to our Cloudflare-fronted prod backend over HTTPS.
+  // CF edge terminates TLS and proxies to EC2:8000 via an Origin Rule.
+  // Local dev overrides with --dart-define=API_BASE=http://localhost:8000/v1.
+  static const _kBetaBackend = 'https://recompdaily.com/v1';
   static String _defaultBaseUrl() {
     const override = String.fromEnvironment('API_BASE');
     if (override.isNotEmpty) return override;
