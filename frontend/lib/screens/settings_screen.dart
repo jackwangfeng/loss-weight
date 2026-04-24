@@ -1,7 +1,3 @@
-import 'dart:io' show Platform;
-
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../l10n/generated/app_localizations.dart';
@@ -95,22 +91,6 @@ class SettingsScreen extends StatelessWidget {
               ),
             ),
           ),
-          // Crashlytics smoke test — only on iOS (where we've set Firebase up)
-          // and only in release (Firebase in debug doesn't upload by default).
-          // Remove after we've confirmed a live event shows up in the console.
-          if (!kIsWeb && Platform.isIOS && kReleaseMode) ...[
-            const SizedBox(height: 24),
-            _sectionHeader(context, 'DIAGNOSTICS'),
-            Card(
-              child: ListTile(
-                leading: Icon(Icons.bug_report_outlined, color: scheme.error),
-                title: const Text('Trigger test crash'),
-                subtitle: const Text(
-                    'Force a native crash for Crashlytics verification. App will close.'),
-                onTap: () => FirebaseCrashlytics.instance.crash(),
-              ),
-            ),
-          ],
         ],
       ),
     );
