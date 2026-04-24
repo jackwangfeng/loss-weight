@@ -1,3 +1,8 @@
+import 'dart:async';
+import 'dart:io' show Platform;
+
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
@@ -11,23 +16,55 @@ import 'providers/auth_provider.dart';
 import 'screens/home_screen.dart';
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  if (kIsWeb) {
-    SemanticsBinding.instance.ensureSemantics();
-  }
-  final localeProvider = LocaleProvider();
-  final themeProvider = ThemeProvider();
-  final authProvider = AuthProvider();
-  await Future.wait([
-    localeProvider.load(),
-    themeProvider.load(),
-    authProvider.load(),
-  ]);
-  runApp(RecompDailyApp(
-    localeProvider: localeProvider,
-    themeProvider: themeProvider,
-    authProvider: authProvider,
-  ));
+  // Crashlytics has no web SDK and we haven't added Android firebase config;
+  // scope init to iOS-only. Any startup failure is swallowed so the app still
+  // boots without Firebase (better to run blind than not run at all).
+  final wantCrashlytics = !kIsWeb && Platform.isIOS;
+
+  // runZonedGuarded catches async Dart errors that FlutterError.onError
+  // doesn't see (e.g. throws inside Timer / Future callbacks). Must wrap
+  // the entire runApp path. See docs.flutter.dev/testing/errors.
+  await runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    if (kIsWeb) {
+      SemanticsBinding.instance.ensureSemantics();
+    }
+
+    if (wantCrashlytics) {
+      try {
+        await Firebase.initializeApp();
+        // Sync framework-level errors (paint / layout / gesture) → Crashlytics.
+        FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+        // Catch async errors bubbling up through the platform dispatcher.
+        PlatformDispatcher.instance.onError = (error, stack) {
+          FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+          return true;
+        };
+      } catch (e, st) {
+        // Don't block boot if Firebase init fails (e.g. plist missing on a
+        // dev build); just log and keep going.
+        debugPrint('firebase init failed: $e\n$st');
+      }
+    }
+
+    final localeProvider = LocaleProvider();
+    final themeProvider = ThemeProvider();
+    final authProvider = AuthProvider();
+    await Future.wait([
+      localeProvider.load(),
+      themeProvider.load(),
+      authProvider.load(),
+    ]);
+    runApp(RecompDailyApp(
+      localeProvider: localeProvider,
+      themeProvider: themeProvider,
+      authProvider: authProvider,
+    ));
+  }, (error, stack) {
+    if (wantCrashlytics) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+    }
+  });
 }
 
 class RecompDailyApp extends StatelessWidget {

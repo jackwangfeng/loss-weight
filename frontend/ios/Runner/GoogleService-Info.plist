@@ -2,13 +2,33 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CLIENT_ID</key>
-	<string>604310975641-kbbf1h3r3v5q81fljqdev4r9lqeoplip.apps.googleusercontent.com</string>
-	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.604310975641-kbbf1h3r3v5q81fljqdev4r9lqeoplip</string>
-	<key>PLIST_VERSION</key>
-	<string>1</string>
+	<key>API_KEY</key>
+	<string>AIzaSyBDR0zpTPWzBEb8z-CxtakZ3MM9Nr5bH-w</string>
 	<key>BUNDLE_ID</key>
 	<string>app.recompdaily.test</string>
+	<key>CLIENT_ID</key>
+	<string>604310975641-kbbf1h3r3v5q81fljqdev4r9lqeoplip.apps.googleusercontent.com</string>
+	<key>GCM_SENDER_ID</key>
+	<string>426417304758</string>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:426417304758:ios:c8da6eb1dd34d50e222217</string>
+	<key>IS_ADS_ENABLED</key>
+	<false/>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false/>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true/>
+	<key>IS_GCM_ENABLED</key>
+	<true/>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true/>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>PROJECT_ID</key>
+	<string>recompdaily</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.604310975641-kbbf1h3r3v5q81fljqdev4r9lqeoplip</string>
+	<key>STORAGE_BUCKET</key>
+	<string>recompdaily.firebasestorage.app</string>
 </dict>
 </plist>
