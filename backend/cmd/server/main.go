@@ -4,10 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"time"
 
-	sentry "github.com/getsentry/sentry-go"
-	sentrygin "github.com/getsentry/sentry-go/gin"
 	"github.com/gin-gonic/gin"
 	"github.com/your-org/loss-weight/backend/internal/auth"
 	"github.com/your-org/loss-weight/backend/internal/config"
@@ -32,22 +29,6 @@ func main() {
 	// Initialize logger
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
-
-	// Initialize Sentry — only if DSN is present. Missing DSN means the
-	// local dev workflow doesn't ping Sentry and doesn't need the account.
-	if cfg.SentryDSN != "" {
-		if err := sentry.Init(sentry.ClientOptions{
-			Dsn:              cfg.SentryDSN,
-			Environment:      cfg.Environment,
-			Release:          cfg.Version,
-			TracesSampleRate: 0.0, // off — errors only, perf tracing costs quota fast.
-		}); err != nil {
-			logger.Error("sentry init failed", zap.Error(err))
-		} else {
-			logger.Info("sentry enabled", zap.String("env", cfg.Environment))
-			defer sentry.Flush(2 * time.Second)
-		}
-	}
 
 	// Initialize database
 	db, err := database.Initialize(cfg.DatabaseURL)
@@ -85,12 +66,6 @@ func main() {
 	r.Use(middleware.CORS())
 	r.Use(middleware.Logger(logger))
 	r.Use(middleware.Recovery(logger))
-	if cfg.SentryDSN != "" {
-		// Must sit AFTER Recovery so panics are caught by our logger first,
-		// then Sentry's middleware captures the event. Repanic:true preserves
-		// existing panic-logging behavior.
-		r.Use(sentrygin.New(sentrygin.Options{Repanic: true}))
-	}
 
 	// Health check endpoint
 	r.GET("/health", func(c *gin.Context) {
