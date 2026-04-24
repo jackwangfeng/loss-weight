@@ -182,12 +182,20 @@ type DailyBriefRequest struct {
 }
 
 type DailyBriefResponse struct {
-	TargetCalories   float32 `json:"target_calories"`
-	CaloriesEaten    float32 `json:"calories_eaten"`
-	CaloriesBurned   float32 `json:"calories_burned"`
+	TargetCalories    float32 `json:"target_calories"`
+	CaloriesEaten     float32 `json:"calories_eaten"`
+	CaloriesBurned    float32 `json:"calories_burned"`
 	CaloriesRemaining float32 `json:"calories_remaining"`
-	MealsLogged      int     `json:"meals_logged"`
-	ExercisesLogged  int     `json:"exercises_logged"`
+	MealsLogged       int     `json:"meals_logged"`
+	ExercisesLogged   int     `json:"exercises_logged"`
+	// Metabolism, Plan B expenditure model: CaloriesExpended = TDEE (activity
+	// level already covers workouts; logged exercise is not added on top).
+	// Deficit > 0 means net caloric deficit for the day (fat-loss direction).
+	// Zeros mean "profile incomplete" — frontend should show a CTA instead.
+	BMR              float32 `json:"bmr"`
+	TDEE             float32 `json:"tdee"`
+	CaloriesExpended float32 `json:"calories_expended"`
+	CaloriesDeficit  float32 `json:"calories_deficit"`
 	// Brief 一句话点评 + 下一步建议
 	Brief string `json:"brief"`
 }
@@ -885,6 +893,7 @@ func (s *AIService) GetDailyBrief(userID uint, locale string) (*DailyBriefRespon
 	}
 
 	remaining := target - eaten + burned
+	metab := computeMetabolism(profile)
 	out := &DailyBriefResponse{
 		TargetCalories:    target,
 		CaloriesEaten:     eaten,
@@ -892,6 +901,13 @@ func (s *AIService) GetDailyBrief(userID uint, locale string) (*DailyBriefRespon
 		CaloriesRemaining: remaining,
 		MealsLogged:       len(foods),
 		ExercisesLogged:   len(exercises),
+		BMR:               float32(metab.BMR),
+		TDEE:              float32(metab.TDEE),
+	}
+	if metab.HasTDEE {
+		// Plan B: expenditure = TDEE, no exercise add-on.
+		out.CaloriesExpended = float32(metab.TDEE)
+		out.CaloriesDeficit = out.CaloriesExpended - eaten
 	}
 
 	// 2. 让 LLM 写一句话

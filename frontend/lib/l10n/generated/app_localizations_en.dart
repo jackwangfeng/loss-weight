@@ -316,6 +316,41 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String homeDeficitToday(String kcal) {
+    return 'Today\'s deficit: +$kcal kcal';
+  }
+
+  @override
+  String homeSurplusToday(String kcal) {
+    return 'Today\'s surplus: $kcal kcal';
+  }
+
+  @override
+  String get homeDeficitMaintenance =>
+      'Today\'s deficit: ~0 kcal (maintenance)';
+
+  @override
+  String get homeDeficitNeedProfile =>
+      'Add height / age / sex to see today\'s deficit';
+
+  @override
+  String get homeMetabolismBmr => 'BMR';
+
+  @override
+  String get homeMetabolismTdee => 'TDEE';
+
+  @override
+  String get homeMetabolismEaten => 'EATEN';
+
+  @override
+  String get homeMetabolismDeficit => 'DEFICIT';
+
+  @override
+  String homeMetabolismActivityHint(String mult) {
+    return '× $mult activity';
+  }
+
+  @override
   String get timeJustNow => 'just now';
 
   @override

@@ -102,6 +102,16 @@
   "homeBudgetIn": "吃",
   "homeBudgetOut": "烧",
   "homeBudgetLeft": "剩余 {value}",
+  "homeDeficitToday": "今日赤字 +{kcal} kcal",
+  "homeSurplusToday": "今日过剩 {kcal} kcal",
+  "homeDeficitMaintenance": "今日基本维持（赤字 ~0）",
+  "homeDeficitNeedProfile": "补齐身高/年龄/性别 查看热量差",
+  "homeMetabolismBmr": "BMR",
+  "homeMetabolismTdee": "TDEE",
+  "homeMetabolismEaten": "吃入",
+  "homeMetabolismDeficit": "赤字",
+  "homeMetabolismActivityHint": "× {mult} 活动",
+
 
   "timeJustNow": "刚刚",
   "timeMinutesAgo": "{n} 分钟前",

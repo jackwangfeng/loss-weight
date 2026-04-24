@@ -650,6 +650,60 @@ abstract class AppLocalizations {
   /// **'{value} left'**
   String homeBudgetLeft(String value);
 
+  /// No description provided for @homeDeficitToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Today\'s deficit: +{kcal} kcal'**
+  String homeDeficitToday(String kcal);
+
+  /// No description provided for @homeSurplusToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Today\'s surplus: {kcal} kcal'**
+  String homeSurplusToday(String kcal);
+
+  /// No description provided for @homeDeficitMaintenance.
+  ///
+  /// In en, this message translates to:
+  /// **'Today\'s deficit: ~0 kcal (maintenance)'**
+  String get homeDeficitMaintenance;
+
+  /// No description provided for @homeDeficitNeedProfile.
+  ///
+  /// In en, this message translates to:
+  /// **'Add height / age / sex to see today\'s deficit'**
+  String get homeDeficitNeedProfile;
+
+  /// No description provided for @homeMetabolismBmr.
+  ///
+  /// In en, this message translates to:
+  /// **'BMR'**
+  String get homeMetabolismBmr;
+
+  /// No description provided for @homeMetabolismTdee.
+  ///
+  /// In en, this message translates to:
+  /// **'TDEE'**
+  String get homeMetabolismTdee;
+
+  /// No description provided for @homeMetabolismEaten.
+  ///
+  /// In en, this message translates to:
+  /// **'EATEN'**
+  String get homeMetabolismEaten;
+
+  /// No description provided for @homeMetabolismDeficit.
+  ///
+  /// In en, this message translates to:
+  /// **'DEFICIT'**
+  String get homeMetabolismDeficit;
+
+  /// No description provided for @homeMetabolismActivityHint.
+  ///
+  /// In en, this message translates to:
+  /// **'× {mult} activity'**
+  String homeMetabolismActivityHint(String mult);
+
   /// No description provided for @timeJustNow.
   ///
   /// In en, this message translates to:

@@ -193,27 +193,36 @@ func (s *AIService) searchRelevantMessages(
 // buildSystemPrompt assembles {user profile + long-term memory + thread summary}.
 // `lang` is the target language name (e.g. "English", "Simplified Chinese");
 // passed via `languageName(req.Locale)` from the chat handler.
+//
+// Trust hierarchy (highest → lowest). The prompt structure reflects this so
+// the model can't defer to stale chat history when current profile answers it:
+//   1. ## AUTHORITATIVE USER DATA (live DB read — never stale)
+//   2. ## User facts (LLM-extracted structured prefs)
+//   3. ## Prior conversation summary (explicitly marked as possibly stale)
+//   4. Retrieved messages + recent window (appended outside this fn)
 func (s *AIService) buildSystemPrompt(userID uint, threadID, lang string) string {
 	var sb strings.Builder
 	sb.WriteString("You are RecompDaily, a direct, data-driven AI recomp coach for men who lift. ")
 	sb.WriteString("Give concrete, actionable guidance grounded in the user's actual numbers below. ")
-	sb.WriteString("Skip fluff, skip pep-talk, skip emoji. Use imperial-agnostic metric units (kg / kcal / g).\n\n")
+	sb.WriteString("Skip fluff, skip pep-talk, skip emoji. Use metric units (kg / kcal / g).\n\n")
 
-	// [1] Profile + today's intake vs targets
+	sb.WriteString("## Trust hierarchy (read carefully)\n")
+	sb.WriteString("1. **AUTHORITATIVE USER DATA** below is a LIVE read from the database — it is the single source of truth. Trust it absolutely.\n")
+	sb.WriteString("2. If earlier messages or summaries say 'I don't know your age/weight/height' but those fields ARE filled in below, those earlier statements are OUTDATED. Ignore them and use the live data.\n")
+	sb.WriteString("3. Never ask the user for a value already listed below. Compute directly.\n\n")
+
+	// [1] Profile + today's intake vs targets + derived numbers
 	if profile := s.loadUserProfile(userID); profile != nil {
-		sb.WriteString("## User profile\n")
+		sb.WriteString("## AUTHORITATIVE USER DATA (live from DB, as of now)\n")
 		if profile.Nickname != "" {
 			sb.WriteString(fmt.Sprintf("- Name: %s\n", profile.Nickname))
 		}
+		metab := computeMetabolism(profile)
+		if metab.Age > 0 {
+			sb.WriteString(fmt.Sprintf("- Age: %d\n", metab.Age))
+		}
 		if profile.Gender != "" {
 			sb.WriteString(fmt.Sprintf("- Sex: %s\n", profile.Gender))
-		}
-		if profile.Birthday != nil && !profile.Birthday.IsZero() {
-			// Integer age, leap-year-naive (who cares for coaching context).
-			age := int(time.Since(*profile.Birthday).Hours() / 24 / 365.25)
-			if age > 0 && age < 120 {
-				sb.WriteString(fmt.Sprintf("- Age: %d\n", age))
-			}
 		}
 		if profile.Height > 0 {
 			sb.WriteString(fmt.Sprintf("- Height: %.1f cm\n", profile.Height))
@@ -227,11 +236,15 @@ func (s *AIService) buildSystemPrompt(userID uint, threadID, lang string) string
 			sb.WriteString("\n")
 		}
 		if profile.ActivityLevel >= 1 && profile.ActivityLevel <= 5 {
-			levels := map[int]string{
-				1: "sedentary", 2: "light", 3: "moderate",
-				4: "active", 5: "very active",
-			}
+			levels := [6]string{"", "sedentary", "light", "moderate", "active", "very active"}
 			sb.WriteString(fmt.Sprintf("- Activity: %s\n", levels[profile.ActivityLevel]))
+		}
+		if metab.HasBMR {
+			sb.WriteString(fmt.Sprintf("- BMR (Mifflin-St Jeor, pre-computed): **%.0f kcal/day**\n", metab.BMR))
+		}
+		if metab.HasTDEE {
+			sb.WriteString(fmt.Sprintf("- TDEE (BMR × activity %.3f, pre-computed): **%.0f kcal/day**\n",
+				metab.ActivityMultiplier, metab.TDEE))
 		}
 
 		targets := deriveMacroTargetsBackend(profile)
@@ -262,21 +275,22 @@ func (s *AIService) buildSystemPrompt(userID uint, threadID, lang string) string
 	// [2] Long-term facts
 	facts := s.loadUserFacts(userID, 20)
 	if len(facts) > 0 {
-		sb.WriteString("## User facts (preferences / constraints accumulated over prior chats)\n")
+		sb.WriteString("## User facts (extracted from prior chats, lower trust than live data above)\n")
 		for _, f := range facts {
 			sb.WriteString(fmt.Sprintf("- [%s] %s\n", f.Category, f.Fact))
 		}
 		sb.WriteString("\n")
 	}
 
-	// [3] Thread summary
+	// [3] Thread summary — explicitly de-ranked
 	if summary := s.loadThreadSummary(threadID); summary != "" {
-		sb.WriteString("## Prior conversation summary\n")
+		sb.WriteString("## Prior conversation summary (MAY BE STALE — defer to AUTHORITATIVE USER DATA above on any conflict)\n")
 		sb.WriteString(summary)
 		sb.WriteString("\n\n")
 	}
 
-	sb.WriteString(fmt.Sprintf("Reply in %s. Be specific. Name the number, the food, or the protocol — never vague advice.", lang))
+	sb.WriteString(fmt.Sprintf("Reply in %s. Be specific. Name the number, the food, or the protocol — never vague advice. ", lang))
+	sb.WriteString("If the user asks about BMR, TDEE, calories, or macros, read the pre-computed values above and state the number directly.")
 	return sb.String()
 }
 

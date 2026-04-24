@@ -71,6 +71,12 @@ class _HomeScreenState extends State<HomeScreen> {
     _aiKey.currentState?.refreshIfStale();
   }
 
+  void jumpToProfile() {
+    setState(() {
+      _selectedIndex = 3;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -186,10 +192,17 @@ class DashboardScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _QuickSetupBanner(user: user),
-              _DailyBriefCard(userId: user.id, onChatTap: () {
-                final homeState = context.findAncestorStateOfType<_HomeScreenState>();
-                homeState?.jumpToCoach();
-              }),
+              _DailyBriefCard(
+                userId: user.id,
+                onChatTap: () {
+                  final homeState = context.findAncestorStateOfType<_HomeScreenState>();
+                  homeState?.jumpToCoach();
+                },
+                onProfileTap: () {
+                  final homeState = context.findAncestorStateOfType<_HomeScreenState>();
+                  homeState?.jumpToProfile();
+                },
+              ),
               const SizedBox(height: 16),
               _TodayMacroCard(userId: user.id),
               const SizedBox(height: 16),
@@ -270,7 +283,12 @@ class DashboardScreen extends StatelessWidget {
 class _DailyBriefCard extends StatefulWidget {
   final int userId;
   final VoidCallback onChatTap;
-  const _DailyBriefCard({required this.userId, required this.onChatTap});
+  final VoidCallback onProfileTap;
+  const _DailyBriefCard({
+    required this.userId,
+    required this.onChatTap,
+    required this.onProfileTap,
+  });
   @override
   State<_DailyBriefCard> createState() => _DailyBriefCardState();
 }
@@ -280,6 +298,7 @@ class _DailyBriefCardState extends State<_DailyBriefCard> {
   Map<String, dynamic>? _data;
   String? _error;
   bool _loading = false;    // true while a refresh is in flight
+  bool _deficitExpanded = false;
 
   // Stale-while-revalidate: cache the last successful brief per-user; on next
   // mount show the cached copy instantly while the live API recomputes.
@@ -394,6 +413,8 @@ class _DailyBriefCardState extends State<_DailyBriefCard> {
                   valueColor: AlwaysStoppedAnimation(_progressColor(context)),
                 ),
               ),
+              const SizedBox(height: 12),
+              _buildDeficitSection(l10n),
               if ((_data!['brief'] ?? '').toString().isNotEmpty) ...[
                 const SizedBox(height: 14),
                 MarkdownBody(
@@ -461,6 +482,136 @@ class _DailyBriefCardState extends State<_DailyBriefCard> {
                 fontSize: 13,
                 color: remaining < 0 ? scheme.error : scheme.onSurface,
                 fontWeight: FontWeight.w600)),
+      ],
+    );
+  }
+
+  /// Collapsed-by-default deficit row. Taps toggle an expanded grid with
+  /// BMR/TDEE/eaten/deficit. Backend returns tdee=0 when the profile is
+  /// missing age/height/sex/activity — in that case we show a one-line CTA
+  /// pointing the user to the profile screen instead.
+  Widget _buildDeficitSection(AppLocalizations l10n) {
+    final scheme = Theme.of(context).colorScheme;
+    final tdee = (_data?['tdee'] as num?)?.toDouble() ?? 0;
+    final bmr = (_data?['bmr'] as num?)?.toDouble() ?? 0;
+    final eaten = (_data?['calories_eaten'] as num?)?.toDouble() ?? 0;
+    final deficit = (_data?['calories_deficit'] as num?)?.toDouble() ?? 0;
+
+    if (tdee <= 0) {
+      return InkWell(
+        onTap: widget.onProfileTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            children: [
+              Icon(Icons.info_outline,
+                  size: 14, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(l10n.homeDeficitNeedProfile,
+                    style: TextStyle(
+                        fontSize: 12.5, color: scheme.onSurfaceVariant)),
+              ),
+              Icon(Icons.chevron_right,
+                  size: 16, color: scheme.onSurfaceVariant),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Color + label rules: deficit > 50 kcal → green (on track), < -50 → red
+    // (over), else neutral "maintenance". The 50-kcal band avoids flapping
+    // between labels as the day's first meal lands.
+    final String label;
+    final Color color;
+    if (deficit > 50) {
+      label = l10n.homeDeficitToday(deficit.toStringAsFixed(0));
+      color = Colors.green.shade400;
+    } else if (deficit < -50) {
+      label = l10n.homeSurplusToday(deficit.toStringAsFixed(0));
+      color = scheme.error;
+    } else {
+      label = l10n.homeDeficitMaintenance;
+      color = scheme.onSurface;
+    }
+
+    return InkWell(
+      onTap: () => setState(() => _deficitExpanded = !_deficitExpanded),
+      borderRadius: BorderRadius.circular(6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(label,
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: color)),
+                ),
+                Icon(
+                  _deficitExpanded ? Icons.expand_less : Icons.expand_more,
+                  size: 18,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ],
+            ),
+          ),
+          AnimatedCrossFade(
+            crossFadeState: _deficitExpanded
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
+            duration: const Duration(milliseconds: 180),
+            firstChild: const SizedBox(width: double.infinity),
+            secondChild: Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 4),
+              child: Row(
+                children: [
+                  Expanded(child: _metabPill(l10n.homeMetabolismBmr, bmr)),
+                  Expanded(child: _metabPill(l10n.homeMetabolismTdee, tdee)),
+                  Expanded(
+                      child: _metabPill(l10n.homeMetabolismEaten, eaten)),
+                  Expanded(
+                      child: _metabPill(
+                          l10n.homeMetabolismDeficit,
+                          deficit,
+                          signed: true,
+                          color: color)),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _metabPill(String label, double value, {bool signed = false, Color? color}) {
+    final scheme = Theme.of(context).colorScheme;
+    final text = signed
+        ? (value >= 0 ? '+${value.toStringAsFixed(0)}' : value.toStringAsFixed(0))
+        : value.toStringAsFixed(0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: TextStyle(
+                fontSize: 9,
+                letterSpacing: 0.8,
+                color: scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600)),
+        const SizedBox(height: 2),
+        Text(text,
+            style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.3,
+                color: color ?? scheme.onSurface)),
       ],
     );
   }

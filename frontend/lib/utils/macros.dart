@@ -53,6 +53,64 @@ MacroTargets deriveMacroTargets(UserProfile? user) {
   );
 }
 
+/// Derived energy numbers for the dashboard deficit row and the AI prompt.
+/// Must stay in lock-step with backend computeMetabolism in
+/// internal/services/metabolism.go — that contract is called out in CLAUDE.md.
+class Metabolism {
+  /// Mifflin-St Jeor, kcal/day. 0 when profile is missing any of
+  /// {age, height, current weight, sex}.
+  final double bmr;
+
+  /// BMR × activity multiplier, kcal/day. 0 when BMR is 0 or activity
+  /// level is unset.
+  final double tdee;
+
+  /// 1.2 (sedentary) … 1.9 (very active). 0 when activity level unset.
+  final double activityMultiplier;
+
+  final int age;
+  const Metabolism({
+    this.bmr = 0,
+    this.tdee = 0,
+    this.activityMultiplier = 0,
+    this.age = 0,
+  });
+
+  bool get hasBmr => bmr > 0;
+  bool get hasTdee => tdee > 0;
+}
+
+Metabolism computeMetabolism(UserProfile? user) {
+  if (user == null) return const Metabolism();
+
+  int age = 0;
+  if (user.birthday != null) {
+    final days = DateTime.now().difference(user.birthday!).inDays;
+    final y = (days / 365.25).floor();
+    if (y > 0 && y < 120) age = y;
+  }
+
+  double bmr = 0;
+  if (age > 0 && user.height > 0 && user.currentWeight > 0 && user.gender.isNotEmpty) {
+    bmr = 10 * user.currentWeight + 6.25 * user.height - 5 * age;
+    final g = user.gender.toLowerCase();
+    if (g == 'male' || g == 'm' || g == '男' || g == '男性') {
+      bmr += 5;
+    } else {
+      bmr -= 161;
+    }
+  }
+
+  double mult = 0;
+  if (user.activityLevel >= 1 && user.activityLevel <= 5) {
+    const mults = [0.0, 1.2, 1.375, 1.55, 1.725, 1.9];
+    mult = mults[user.activityLevel];
+  }
+
+  final tdee = (bmr > 0 && mult > 0) ? bmr * mult : 0.0;
+  return Metabolism(bmr: bmr, tdee: tdee, activityMultiplier: mult, age: age);
+}
+
 /// Short hint for "what should I do next?" row in the macro dashboard.
 /// Rule-based (no LLM) for MVP — faster, cheaper, predictable.
 ///

@@ -313,6 +313,39 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String homeDeficitToday(String kcal) {
+    return '今日赤字 +$kcal kcal';
+  }
+
+  @override
+  String homeSurplusToday(String kcal) {
+    return '今日过剩 $kcal kcal';
+  }
+
+  @override
+  String get homeDeficitMaintenance => '今日基本维持（赤字 ~0）';
+
+  @override
+  String get homeDeficitNeedProfile => '补齐身高/年龄/性别 查看热量差';
+
+  @override
+  String get homeMetabolismBmr => 'BMR';
+
+  @override
+  String get homeMetabolismTdee => 'TDEE';
+
+  @override
+  String get homeMetabolismEaten => '吃入';
+
+  @override
+  String get homeMetabolismDeficit => '赤字';
+
+  @override
+  String homeMetabolismActivityHint(String mult) {
+    return '× $mult 活动';
+  }
+
+  @override
   String get timeJustNow => '刚刚';
 
   @override
