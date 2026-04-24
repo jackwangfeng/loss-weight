@@ -47,6 +47,9 @@ coverage/
 .env.local
 .env.*.local
 
+# Google OAuth client secrets (never commit)
+client_secret_*.json
+
 # IDE
 .vscode/
 .idea/
