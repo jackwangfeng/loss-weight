@@ -14,6 +14,8 @@ const CODE = '123456';
 test.describe.serial('后端 API 端到端流程', () => {
   let token = '';
   let userId = 0;
+  let threadId = 0;
+  let lastMsgId = 0;
 
   test('健康检查', async ({ request }) => {
     const r = await request.get(`${API}/health`);
@@ -134,6 +136,9 @@ test.describe.serial('后端 API 端到端流程', () => {
       data: { title: 'E2E 测试对话' },
     });
     expect(r.ok()).toBeTruthy();
+    const data = await r.json();
+    threadId = data.id;
+    expect(threadId).toBeGreaterThan(0);
   });
 
   test('获取用户聊天线程列表', async ({ request }) => {
@@ -141,6 +146,61 @@ test.describe.serial('后端 API 端到端流程', () => {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect(r.ok()).toBeTruthy();
+  });
+
+  test('发两条聊天消息 (给 since_id 测试做种)', async ({ request }) => {
+    for (const content of ['since_id seed A', 'since_id seed B']) {
+      const r = await request.post(`${API}/v1/ai/chat`, {
+        headers: { Authorization: `Bearer ${token}` },
+        data: {
+          user_id: userId,
+          thread_id: String(threadId),
+          messages: [{ role: 'user', content }],
+          locale: 'en',
+        },
+      });
+      expect(r.ok()).toBeTruthy();
+      const data = await r.json();
+      // Assistant message_id comes back on every chat completion; we want the
+      // *highest* real id at the end so the since_id tests below can assert
+      // "nothing newer than this" returns empty.
+      if (data.message_id) lastMsgId = data.message_id;
+    }
+    expect(lastMsgId).toBeGreaterThan(0);
+  });
+
+  test('增量拉取 (since_id 过滤)', async ({ request }) => {
+    // Full fetch — should contain both user + assistant messages we seeded.
+    const full = await request.get(
+      `${API}/v1/ai/chat/history?user_id=${userId}&thread_id=${threadId}&since_id=0`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    expect(full.ok()).toBeTruthy();
+    const fullData = await full.json();
+    expect(fullData.count).toBeGreaterThanOrEqual(2);
+
+    // since_id = highest known id → server should return 0 messages.
+    const empty = await request.get(
+      `${API}/v1/ai/chat/history?user_id=${userId}&thread_id=${threadId}&since_id=${lastMsgId}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    expect(empty.ok()).toBeTruthy();
+    expect((await empty.json()).count).toBe(0);
+
+    // Absurdly large cursor → also 0. Guards against off-by-one.
+    const huge = await request.get(
+      `${API}/v1/ai/chat/history?user_id=${userId}&thread_id=${threadId}&since_id=99999999`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    expect(huge.ok()).toBeTruthy();
+    expect((await huge.json()).count).toBe(0);
+
+    // Malformed since_id → 400, not silently ignored.
+    const bad = await request.get(
+      `${API}/v1/ai/chat/history?user_id=${userId}&thread_id=${threadId}&since_id=abc`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    expect(bad.status()).toBe(400);
   });
 
   test('退出登录', async ({ request }) => {
