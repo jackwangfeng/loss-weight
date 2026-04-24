@@ -112,6 +112,14 @@
   "homeMetabolismDeficit": "赤字",
   "homeMetabolismActivityHint": "× {mult} 活动",
 
+  "profileFeedback": "意见反馈",
+  "feedbackTitle": "意见反馈",
+  "feedbackHint": "bug、想要的功能、任何想说的，我们都看。",
+  "feedbackContactLabel": "联系方式（选填 — 邮箱或微信）",
+  "feedbackSubmit": "发送",
+  "feedbackSent": "收到啦，谢谢。",
+  "feedbackFailed": "发送失败：{error}",
+
 
   "timeJustNow": "刚刚",
   "timeMinutesAgo": "{n} 分钟前",

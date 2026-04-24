@@ -103,6 +103,14 @@ func SetupAIRoutes(v1 *gin.RouterGroup, db *gorm.DB, logger *zap.Logger, cfg *co
 	}
 }
 
+func SetupFeedbackRoutes(v1 *gin.RouterGroup, db *gorm.DB, logger *zap.Logger) {
+	fbService := services.NewFeedbackService(db, logger)
+	fbHandler := handlers.NewFeedbackHandler(fbService, logger)
+	// Public — even logged-out users should be able to send feedback (e.g.
+	// "can't sign in"). Rate-limiting is cheap to add later if abused.
+	v1.POST("/feedback", fbHandler.Submit)
+}
+
 func SetupAuthRoutes(v1 *gin.RouterGroup, db *gorm.DB, logger *zap.Logger, googleClientID, googleIOSClientID string, tokens *auth.TokenIssuer) {
 	authService := services.NewAuthService(db, logger, googleClientID, googleIOSClientID, tokens)
 	authHandler := handlers.NewAuthHandler(authService, logger)

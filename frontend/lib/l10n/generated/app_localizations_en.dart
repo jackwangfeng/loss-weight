@@ -351,6 +351,30 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get profileFeedback => 'Send feedback';
+
+  @override
+  String get feedbackTitle => 'Feedback';
+
+  @override
+  String get feedbackHint =>
+      'What would make RecompDaily better? Bugs, missing features, anything.';
+
+  @override
+  String get feedbackContactLabel => 'Contact (optional — email or WeChat)';
+
+  @override
+  String get feedbackSubmit => 'Send';
+
+  @override
+  String get feedbackSent => 'Thanks — feedback received.';
+
+  @override
+  String feedbackFailed(String error) {
+    return 'Couldn\'t send: $error';
+  }
+
+  @override
   String get timeJustNow => 'just now';
 
   @override

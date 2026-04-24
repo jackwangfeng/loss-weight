@@ -131,6 +131,15 @@
   "homeMetabolismActivityHint": "× {mult} activity",
   "@homeMetabolismActivityHint": { "placeholders": { "mult": { "type": "String" } } },
 
+  "profileFeedback": "Send feedback",
+  "feedbackTitle": "Feedback",
+  "feedbackHint": "What would make RecompDaily better? Bugs, missing features, anything.",
+  "feedbackContactLabel": "Contact (optional — email or WeChat)",
+  "feedbackSubmit": "Send",
+  "feedbackSent": "Thanks — feedback received.",
+  "feedbackFailed": "Couldn't send: {error}",
+  "@feedbackFailed": { "placeholders": { "error": { "type": "String" } } },
+
   "timeJustNow": "just now",
   "timeMinutesAgo": "{n}m ago",
   "@timeMinutesAgo": { "placeholders": { "n": { "type": "int" } } },

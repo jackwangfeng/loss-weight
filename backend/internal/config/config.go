@@ -29,6 +29,8 @@ type Config struct {
 	GoogleClientID     string // OAuth 2.0 Web Client ID — audience for Google ID tokens (web/Android)
 	GoogleIOSClientID  string // OAuth 2.0 iOS Client ID — iOS-native Google Sign-In returns tokens with this aud
 	DeepgramAPIKey     string // Deepgram STT (nova-3 for en, nova-2 for zh-CN) — 3-4x faster than Gemini audio
+	SentryDSN          string // Empty → crash/error reporting disabled; Sentry never initializes.
+	Environment        string // e.g. "dev" / "prod" — tag on every Sentry event so prod/dev errors separate.
 }
 
 // Load reads configuration from file and environment variables
@@ -66,6 +68,8 @@ func Load(configPath string) (*Config, error) {
 	_ = viper.BindEnv("database_url", "DATABASE_URL")
 	_ = viper.BindEnv("redis_url", "REDIS_URL")
 	_ = viper.BindEnv("deepgram_api_key", "DEEPGRAM_API_KEY")
+	_ = viper.BindEnv("sentry_dsn", "SENTRY_DSN")
+	_ = viper.BindEnv("environment", "ENVIRONMENT")
 
 	// Try to read config file (optional)
 	if err := viper.ReadInConfig(); err != nil {
@@ -95,6 +99,15 @@ func Load(configPath string) (*Config, error) {
 		GoogleClientID:    viper.GetString("google_client_id"),
 		GoogleIOSClientID: viper.GetString("google_ios_client_id"),
 		DeepgramAPIKey:    viper.GetString("deepgram_api_key"),
+		SentryDSN:         viper.GetString("sentry_dsn"),
+		Environment:       viper.GetString("environment"),
+	}
+	if config.Environment == "" {
+		if config.Debug {
+			config.Environment = "dev"
+		} else {
+			config.Environment = "prod"
+		}
 	}
 
 	return config, nil

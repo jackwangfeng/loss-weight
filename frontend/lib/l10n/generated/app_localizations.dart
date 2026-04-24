@@ -704,6 +704,48 @@ abstract class AppLocalizations {
   /// **'× {mult} activity'**
   String homeMetabolismActivityHint(String mult);
 
+  /// No description provided for @profileFeedback.
+  ///
+  /// In en, this message translates to:
+  /// **'Send feedback'**
+  String get profileFeedback;
+
+  /// No description provided for @feedbackTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Feedback'**
+  String get feedbackTitle;
+
+  /// No description provided for @feedbackHint.
+  ///
+  /// In en, this message translates to:
+  /// **'What would make RecompDaily better? Bugs, missing features, anything.'**
+  String get feedbackHint;
+
+  /// No description provided for @feedbackContactLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Contact (optional — email or WeChat)'**
+  String get feedbackContactLabel;
+
+  /// No description provided for @feedbackSubmit.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get feedbackSubmit;
+
+  /// No description provided for @feedbackSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Thanks — feedback received.'**
+  String get feedbackSent;
+
+  /// No description provided for @feedbackFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t send: {error}'**
+  String feedbackFailed(String error);
+
   /// No description provided for @timeJustNow.
   ///
   /// In en, this message translates to:

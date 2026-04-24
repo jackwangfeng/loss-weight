@@ -9,6 +9,7 @@ import '../models/user_profile.dart';
 import '../services/ai_service.dart';
 import '../utils/labels.dart';
 import '../widgets/voice_input_button.dart';
+import 'feedback_screen.dart';
 import 'login_screen.dart';
 import 'settings_screen.dart';
 
@@ -110,13 +111,26 @@ class ProfileScreen extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         Card(
-          child: ListTile(
-            leading: const Icon(Icons.settings_outlined),
-            title: Text(l10n.profileSettings),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const SettingsScreen()),
-            ),
+          child: Column(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.settings_outlined),
+                title: Text(l10n.profileSettings),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                ),
+              ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              ListTile(
+                leading: const Icon(Icons.feedback_outlined),
+                title: Text(l10n.profileFeedback),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const FeedbackScreen()),
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 16),

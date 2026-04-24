@@ -346,6 +346,29 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get profileFeedback => '意见反馈';
+
+  @override
+  String get feedbackTitle => '意见反馈';
+
+  @override
+  String get feedbackHint => 'bug、想要的功能、任何想说的，我们都看。';
+
+  @override
+  String get feedbackContactLabel => '联系方式（选填 — 邮箱或微信）';
+
+  @override
+  String get feedbackSubmit => '发送';
+
+  @override
+  String get feedbackSent => '收到啦，谢谢。';
+
+  @override
+  String feedbackFailed(String error) {
+    return '发送失败：$error';
+  }
+
+  @override
   String get timeJustNow => '刚刚';
 
   @override
