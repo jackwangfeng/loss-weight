@@ -16,10 +16,12 @@ import 'providers/auth_provider.dart';
 import 'screens/home_screen.dart';
 
 Future<void> main() async {
-  // Crashlytics has no web SDK and we haven't added Android firebase config;
-  // scope init to iOS-only. Any startup failure is swallowed so the app still
-  // boots without Firebase (better to run blind than not run at all).
-  final wantCrashlytics = !kIsWeb && Platform.isIOS;
+  // Crashlytics has no web SDK — skip web. iOS reads GoogleService-Info.plist
+  // from the bundle, Android reads google-services.json from the app module
+  // via the google-services Gradle plugin. Any startup failure is swallowed
+  // so the app still boots without Firebase (better to run blind than not run
+  // at all).
+  final wantCrashlytics = !kIsWeb && (Platform.isIOS || Platform.isAndroid);
 
   // runZonedGuarded catches async Dart errors that FlutterError.onError
   // doesn't see (e.g. throws inside Timer / Future callbacks). Must wrap

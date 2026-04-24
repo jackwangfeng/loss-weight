@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "426417304758",
+    "project_id": "recompdaily",
+    "storage_bucket": "recompdaily.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:426417304758:android:76dfdbd081d4d4d9222217",
+        "android_client_info": {
+          "package_name": "app.recompdaily.test"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBAh4HQ2L0KSmHA70IWw00ivacE0evZOko"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
