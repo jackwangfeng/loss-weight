@@ -69,6 +69,16 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
   StreamSubscription? _wsSub;
   StreamController<Uint8List>? _audioCtrl;
   StreamSubscription<Uint8List>? _audioSub;
+  StreamSubscription<RecordingDisposition>? _ampSub;
+  // Last ~30 amplitude samples (0..1 normalized from decibels). Drives the
+  // floating waveform above the press-and-hold button.
+  final List<double> _amplitudes = [];
+
+  // Press + drag plumbing (Doubao-style slide-up-to-cancel).
+  Offset? _pressStartGlobal;
+  bool _willCancel = false;
+  // Above the button by this many pixels = "release here to cancel".
+  static const _cancelThresholdPx = 80.0;
   // Snapshot of the controller's text at recording start, so we restore it
   // if the user cancels mid-recording (errors / disconnect).
   String _textSnapshot = '';
@@ -134,8 +144,6 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
   }
 
   void _onPressUp(_) async {
-    // If recording hasn't actually started yet (still in _start awaits),
-    // mark for self-abort once it has — avoids "stuck open" recorder.
     if (_state == _VoiceState.idle) {
       _releasedDuringStart = true;
       return;
@@ -163,6 +171,69 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
       return;
     }
     if (_state != _VoiceState.recording) return;
+    _pressStart = null;
+    await _abortInFlight();
+  }
+
+  // Pointer-event handlers for the Doubao-style press-and-drag (only used
+  // when both `pressToTalk` and `!compact` — the chat voice bar). These
+  // track Y movement so user can slide up to flag "release here = cancel".
+  void _onPointerDown(PointerDownEvent e) {
+    if (_state != _VoiceState.idle) return;
+    _pressStartGlobal = e.position;
+    _willCancel = false;
+    _pressStart = DateTime.now();
+    _releasedDuringStart = false;
+    _start();
+  }
+
+  void _onPointerMove(PointerMoveEvent e) {
+    if (_pressStartGlobal == null) return;
+    final dy = e.position.dy - _pressStartGlobal!.dy; // negative = moved up
+    final shouldCancel = dy < -_cancelThresholdPx;
+    if (shouldCancel != _willCancel) {
+      setState(() => _willCancel = shouldCancel);
+    }
+  }
+
+  void _onPointerUp(PointerUpEvent e) async {
+    if (_state == _VoiceState.idle) {
+      _releasedDuringStart = true;
+      _willCancel = false;
+      return;
+    }
+    if (_state != _VoiceState.recording) return;
+    if (_willCancel) {
+      // User dragged up past threshold and released — discard.
+      _pressStartGlobal = null;
+      _pressStart = null;
+      await _abortInFlight();
+      return;
+    }
+    // Same as _onPressUp: enforce min hold, otherwise stop+finalize.
+    final held = _pressStart == null
+        ? Duration.zero
+        : DateTime.now().difference(_pressStart!);
+    _pressStart = null;
+    _pressStartGlobal = null;
+    if (held.inMilliseconds < _minHoldMs) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('按住说话哦')),
+        );
+      }
+      await _abortInFlight();
+      return;
+    }
+    await _stop();
+  }
+
+  void _onPointerCancel(PointerCancelEvent e) async {
+    _pressStartGlobal = null;
+    if (_state == _VoiceState.idle) {
+      _releasedDuringStart = true;
+      return;
+    }
     _pressStart = null;
     await _abortInFlight();
   }
@@ -236,6 +307,29 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
     }
   }
 
+  void _startAmplitude() {
+    // Sample at ~12Hz — fast enough for a smooth bar dance, sparse enough to
+    // not flood setState. Normalize decibels (-60dB silence → 0,
+    // -10dB shouted speech → 1) using a clamp; flutter_sound rarely emits
+    // anything outside [-120, 0].
+    _recorder.setSubscriptionDuration(const Duration(milliseconds: 80));
+    _ampSub = _recorder.onProgress?.listen((e) {
+      if (!mounted) return;
+      final db = e.decibels ?? -60;
+      final norm = ((db + 60) / 50).clamp(0.0, 1.0);
+      setState(() {
+        _amplitudes.add(norm);
+        if (_amplitudes.length > 30) _amplitudes.removeAt(0);
+      });
+    });
+  }
+
+  void _stopAmplitude() {
+    _ampSub?.cancel();
+    _ampSub = null;
+    _amplitudes.clear();
+  }
+
   Future<void> _startStreamingRecording() async {
     final wsUrl = _streamUrl();
     _ws = WebSocketChannel.connect(wsUrl);
@@ -278,6 +372,7 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
       sampleRate: 16000,
       numChannels: 1,
     );
+    _startAmplitude();
   }
 
   Future<void> _startFileRecording() async {
@@ -290,6 +385,7 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
       sampleRate: 16000,
       numChannels: 1,
     );
+    _startAmplitude();
   }
 
   Uri _streamUrl() {
@@ -410,6 +506,9 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
     } catch (_) {}
     _ws = null;
     _recordStart = null;
+    _stopAmplitude();
+    _willCancel = false;
+    _pressStartGlobal = null;
     if (mounted) setState(() => _state = _VoiceState.idle);
   }
 
@@ -471,6 +570,9 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
   void _resetFile() {
     _tickTimer?.cancel();
     _recordStart = null;
+    _stopAmplitude();
+    _willCancel = false;
+    _pressStartGlobal = null;
     if (mounted) setState(() => _state = _VoiceState.idle);
     _currentPath = null;
   }
@@ -495,23 +597,99 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
   }
 
   Widget _buildCurrent(ColorScheme scheme) {
-    // pressToTalk → onTapDown/Up handlers (release sends).
-    // tap-toggle  → onTap handler (tap to start, tap again to stop).
-    // Both paths share the visual state machine.
-    final detector = widget.pressToTalk
+    // Three gesture flavors:
+    //   • !pressToTalk      → onTap (tap to start, tap again to stop)
+    //   • pressToTalk+compact → onTapDown/Up (small mic, no slide-cancel)
+    //   • pressToTalk+!compact → Listener (chat voice bar, full Doubao UX:
+    //       press, drag up to mark cancel, release to send/cancel)
+    final showFloatingPanel =
+        widget.pressToTalk && !widget.compact && _state == _VoiceState.recording;
+
+    final core = !widget.pressToTalk
         ? GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapDown: _onPressDown,
-            onTapUp: _onPressUp,
-            onTapCancel: _onPressCancel,
-            child: _stateChild(scheme),
-          )
-        : GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: _onTapToggle,
             child: _stateChild(scheme),
-          );
-    return detector;
+          )
+        : widget.compact
+            ? GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapDown: _onPressDown,
+                onTapUp: _onPressUp,
+                onTapCancel: _onPressCancel,
+                child: _stateChild(scheme),
+              )
+            : Listener(
+                behavior: HitTestBehavior.opaque,
+                onPointerDown: _onPointerDown,
+                onPointerMove: _onPointerMove,
+                onPointerUp: _onPointerUp,
+                onPointerCancel: _onPointerCancel,
+                child: _stateChild(scheme),
+              );
+
+    if (!showFloatingPanel) return core;
+    // Floating "press-to-talk" panel above the button while recording. Sits
+    // in the same vertical column so AnimatedSize on the parent gives a
+    // smooth height-grow when recording starts.
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _floatingPanel(scheme),
+        const SizedBox(height: 8),
+        core,
+      ],
+    );
+  }
+
+  Widget _floatingPanel(ColorScheme scheme) {
+    final cancelTint = _willCancel ? scheme.error : scheme.primary;
+    final mainText = _willCancel ? '松开取消' : '松开发送';
+    final hintText = _willCancel ? '↓ 移回继续' : '↑ 上移取消';
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: (_willCancel ? scheme.error : scheme.surfaceContainerHighest)
+            .withValues(alpha: _willCancel ? 0.12 : 1.0),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: cancelTint.withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Waveform — heights animate to current amplitude samples.
+          SizedBox(
+            height: 28,
+            child: _Waveform(
+              amplitudes: _amplitudes,
+              color: cancelTint,
+              cancelMode: _willCancel,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            mainText,
+            style: TextStyle(
+              color: cancelTint,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            hintText,
+            style: TextStyle(
+              color: scheme.onSurfaceVariant,
+              fontSize: 11,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _stateChild(ColorScheme scheme) {
@@ -624,4 +802,81 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
         ),
     };
   }
+}
+
+/// Floating waveform on top of the press-and-hold pill. Renders 24 bars
+/// whose heights map directly to the recent amplitude buffer. When
+/// `cancelMode` is on we desaturate to grey-red and shrink so it visually
+/// "deadens" — telling the user "you're about to throw this away".
+class _Waveform extends StatelessWidget {
+  final List<double> amplitudes;
+  final Color color;
+  final bool cancelMode;
+  const _Waveform({
+    required this.amplitudes,
+    required this.color,
+    required this.cancelMode,
+  });
+
+  static const _barCount = 24;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _WaveformPainter(
+        // Right-align: newest samples on the right, older on the left, so
+        // the waveform "scrolls" rightward like every other audio app.
+        samples: _padOrTrim(amplitudes, _barCount),
+        color: color,
+        attenuate: cancelMode ? 0.4 : 1.0,
+      ),
+      size: const Size.fromHeight(28),
+    );
+  }
+
+  static List<double> _padOrTrim(List<double> src, int n) {
+    if (src.length >= n) return src.sublist(src.length - n);
+    return List<double>.filled(n - src.length, 0) + src;
+  }
+}
+
+class _WaveformPainter extends CustomPainter {
+  final List<double> samples; // 0..1
+  final Color color;
+  final double attenuate;
+  _WaveformPainter({
+    required this.samples,
+    required this.color,
+    required this.attenuate,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final n = samples.length;
+    final gap = 2.0;
+    final barW = (size.width - gap * (n - 1)) / n;
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    for (var i = 0; i < n; i++) {
+      // Floor-clamp so silent passages still show a thin baseline tick —
+      // makes the bar bank feel "alive" instead of "dead until you speak".
+      final h = ((samples[i].clamp(0.0, 1.0) * 0.85 + 0.05) * size.height) *
+          attenuate;
+      final x = i * (barW + gap);
+      final y = (size.height - h) / 2;
+      final rect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(x, y, barW, h),
+        const Radius.circular(2),
+      );
+      canvas.drawRRect(rect, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _WaveformPainter old) =>
+      old.samples != samples ||
+      old.color != color ||
+      old.attenuate != attenuate;
 }
