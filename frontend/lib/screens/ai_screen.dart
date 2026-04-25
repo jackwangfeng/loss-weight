@@ -27,6 +27,10 @@ class AIScreenState extends State<AIScreen> {
   AIChatThread? _currentThread;
   bool _isLoading = false;
   bool _isTyping = false;
+  // Doubao-style input toggle: false = keyboard + small mic, true = full
+  // press-and-hold mic taking over the input area. Voice mode auto-sends
+  // on finalize so the user never has to tap the send button after speaking.
+  bool _voiceMode = false;
 
   // Delta-refresh plumbing: called by HomeScreen when the Coach tab gains
   // focus. Avoid overlapping requests + a short cooldown so rapid tab
@@ -637,6 +641,8 @@ class AIScreenState extends State<AIScreen> {
 
   Widget _buildInputArea(AppLocalizations l10n) {
     final scheme = Theme.of(context).colorScheme;
+    final localeId =
+        effectiveAiLocale(context) == 'zh' ? 'zh-CN' : 'en-US';
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -646,44 +652,61 @@ class AIScreenState extends State<AIScreen> {
       child: SafeArea(
         child: Row(
           children: [
+            // Camera (food photo) — same on both modes.
             IconButton(
               onPressed: _pickImage,
               icon: const Icon(Icons.camera_alt),
               tooltip: l10n.actionLogFoodFromPhoto,
             ),
-            VoiceInputButton(
-              targetController: _messageController,
-              localeId:
-                  effectiveAiLocale(context) == 'zh' ? 'zh-CN' : 'en-US',
+            // Mode-toggle: keyboard ↔ voice. Tap flips _voiceMode; the
+            // input area swaps between text field+send vs full press-to-talk.
+            IconButton(
+              onPressed: () => setState(() => _voiceMode = !_voiceMode),
+              icon: Icon(_voiceMode ? Icons.keyboard : Icons.graphic_eq),
+              tooltip: _voiceMode ? '切到键盘' : '切到语音',
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 4),
             Expanded(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                decoration: BoxDecoration(
-                  color: scheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: TextField(
-                  controller: _messageController,
-                  decoration: InputDecoration(
-                    hintText: l10n.coachInputHint,
-                    border: InputBorder.none,
-                  ),
-                  maxLines: null,
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: (_) => _sendMessage(),
+              child: _voiceMode
+                  ? VoiceInputButton(
+                      key: const ValueKey('voice-bar'),
+                      targetController: _messageController,
+                      localeId: localeId,
+                      compact: false,
+                      pressToTalk: true,
+                      // Doubao behavior: 松开 → 立即发送，不再手工点 send.
+                      onFinalized: _sendMessage,
+                    )
+                  : Container(
+                      key: const ValueKey('text-bar'),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: TextField(
+                        controller: _messageController,
+                        decoration: InputDecoration(
+                          hintText: l10n.coachInputHint,
+                          border: InputBorder.none,
+                        ),
+                        maxLines: null,
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _sendMessage(),
+                      ),
+                    ),
+            ),
+            // Send button only in keyboard mode — voice mode auto-sends.
+            if (!_voiceMode) ...[
+              const SizedBox(width: 8),
+              CircleAvatar(
+                backgroundColor: scheme.primary,
+                child: IconButton(
+                  onPressed: _sendMessage,
+                  icon: Icon(Icons.send, color: scheme.onPrimary, size: 20),
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            CircleAvatar(
-              backgroundColor: scheme.primary,
-              child: IconButton(
-                onPressed: _sendMessage,
-                icon: Icon(Icons.send, color: scheme.onPrimary, size: 20),
-              ),
-            ),
+            ],
           ],
         ),
       ),

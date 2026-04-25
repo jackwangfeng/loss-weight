@@ -30,6 +30,17 @@ class VoiceInputButton extends StatefulWidget {
   final VoidCallback? onFinalized;
   final void Function(Map<String, dynamic> parsed)? onProfileParsed;
   final String localeId;
+  /// `true` (default) → small mic icon, sits next to a text field.
+  /// `false` → full-width "按住说话" pill, voice-only chat input mode.
+  final bool compact;
+
+  /// `true` → press-and-hold to record, release to send. Best for chat-
+  /// style short utterances (WeChat / Doubao style).
+  /// `false` (default) → tap to start, tap again to stop. Better for
+  /// "think while you speak" inputs (profile setup, food/exercise/weight
+  /// logging) where holding the finger down through pauses is awkward and
+  /// short pauses get clipped to "按住说话哦" errors.
+  final bool pressToTalk;
 
   const VoiceInputButton({
     Key? key,
@@ -37,6 +48,8 @@ class VoiceInputButton extends StatefulWidget {
     this.onFinalized,
     this.onProfileParsed,
     this.localeId = 'en-US',
+    this.compact = true,
+    this.pressToTalk = false,
   }) : super(key: key);
 
   @override
@@ -101,29 +114,38 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
     _opened = true;
   }
 
-  // Press-and-hold interaction (WeChat / Doubao style):
+  // ----- Press-and-hold (chat / Doubao style) -----
   //   tap-down  → start recording
   //   tap-up    → stop + finalize
-  //   tap-cancel (gesture interrupted, e.g. user dragged away) → discard
-  // Anything <300ms gets treated as accidental and aborted; otherwise
-  // a 50ms tap captures noise that paraformer just answers as "empty".
+  //   tap-cancel (drag away / system steal) → discard, restore text
+  //
+  // Releases shorter than 300ms get treated as accidental taps and aborted
+  // with a "按住说话哦" hint. The release-before-start race is handled by
+  // checking `_releasedDuringStart` after the awaits in _start() finish.
   static const _minHoldMs = 300;
   DateTime? _pressStart;
+  bool _releasedDuringStart = false;
 
   void _onPressDown(_) {
     if (_state != _VoiceState.idle) return;
     _pressStart = DateTime.now();
+    _releasedDuringStart = false;
     _start();
   }
 
   void _onPressUp(_) async {
+    // If recording hasn't actually started yet (still in _start awaits),
+    // mark for self-abort once it has — avoids "stuck open" recorder.
+    if (_state == _VoiceState.idle) {
+      _releasedDuringStart = true;
+      return;
+    }
     if (_state != _VoiceState.recording) return;
     final held = _pressStart == null
         ? Duration.zero
         : DateTime.now().difference(_pressStart!);
     _pressStart = null;
     if (held.inMilliseconds < _minHoldMs) {
-      // Treat as accidental tap — abort silently, restore text.
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('按住说话哦')),
@@ -136,9 +158,23 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
   }
 
   void _onPressCancel() async {
+    if (_state == _VoiceState.idle) {
+      _releasedDuringStart = true;
+      return;
+    }
     if (_state != _VoiceState.recording) return;
     _pressStart = null;
     await _abortInFlight();
+  }
+
+  // ----- Tap-to-toggle (form / profile style) -----
+  Future<void> _onTapToggle() async {
+    if (_state == _VoiceState.recording) {
+      await _stop();
+    } else if (_state == _VoiceState.idle) {
+      await _start();
+    }
+    // uploading state: ignore taps until previous round resolves
   }
 
   Future<void> _abortInFlight() async {
@@ -182,6 +218,14 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
         setState(() => _tickCounter++);
       });
       if (mounted) setState(() => _state = _VoiceState.recording);
+      // Press-and-hold race: user released finger while we were still
+      // wiring up the recorder. Translate that into a normal stop+finalize
+      // so the recorder doesn't stay open in the background.
+      if (widget.pressToTalk && _releasedDuringStart) {
+        _releasedDuringStart = false;
+        await _stop();
+        return;
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -451,93 +495,133 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
   }
 
   Widget _buildCurrent(ColorScheme scheme) {
-    // Wrap every state in the same GestureDetector — the user's finger may
-    // press while we're "uploading" from a previous press; the new gesture
-    // is ignored (state guard inside the handlers) but at least it doesn't
-    // crash the InkWell ripple.
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: _onPressDown,
-      onTapUp: _onPressUp,
-      onTapCancel: _onPressCancel,
-      child: switch (_state) {
-        _VoiceState.idle => Tooltip(
-            key: const ValueKey('idle'),
-            message: '按住说话',
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child: Icon(Icons.mic, color: scheme.primary),
-            ),
+    // pressToTalk → onTapDown/Up handlers (release sends).
+    // tap-toggle  → onTap handler (tap to start, tap again to stop).
+    // Both paths share the visual state machine.
+    final detector = widget.pressToTalk
+        ? GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: _onPressDown,
+            onTapUp: _onPressUp,
+            onTapCancel: _onPressCancel,
+            child: _stateChild(scheme),
+          )
+        : GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _onTapToggle,
+            child: _stateChild(scheme),
+          );
+    return detector;
+  }
+
+  Widget _stateChild(ColorScheme scheme) {
+    final idleHint = widget.pressToTalk ? '按住说话' : '点一下说话';
+    final recHint = widget.pressToTalk ? '松开发送' : '点一下结束';
+    return switch (_state) {
+      _VoiceState.idle => Tooltip(
+          key: const ValueKey('idle'),
+          message: idleHint,
+          child: widget.compact
+              ? Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Icon(Icons.mic, color: scheme.primary),
+                )
+              : Container(
+                  // Doubao-style "按住说话" full-width pill, used when the
+                  // chat input bar is in voice-only mode.
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: scheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.mic, size: 18, color: scheme.primary),
+                      const SizedBox(width: 6),
+                      Text(idleHint,
+                          style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                ),
+        ),
+      _VoiceState.recording => Container(
+          key: const ValueKey('rec'),
+          padding: EdgeInsets.symmetric(
+              horizontal: widget.compact ? 10 : 16,
+              vertical: widget.compact ? 8 : 12),
+          decoration: BoxDecoration(
+            color: scheme.error.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(widget.compact ? 20 : 24),
           ),
-        _VoiceState.recording => Container(
-            key: const ValueKey('rec'),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              color: scheme.error.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                AnimatedBuilder(
-                  animation: _pulse,
-                  builder: (_, __) => Container(
-                    width: 10, height: 10,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: scheme.error
-                          .withValues(alpha: 0.5 + _pulse.value * 0.5),
-                    ),
+          child: Row(
+            mainAxisAlignment: widget.compact
+                ? MainAxisAlignment.start
+                : MainAxisAlignment.center,
+            mainAxisSize:
+                widget.compact ? MainAxisSize.min : MainAxisSize.max,
+            children: [
+              AnimatedBuilder(
+                animation: _pulse,
+                builder: (_, __) => Container(
+                  width: 10, height: 10,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: scheme.error
+                        .withValues(alpha: 0.5 + _pulse.value * 0.5),
                   ),
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  _elapsedStr(),
-                  style: TextStyle(
-                    color: scheme.error,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                _elapsedStr(),
+                style: TextStyle(
+                  color: scheme.error,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
-                const SizedBox(width: 6),
-                Text(
-                  '松开发送',
-                  style: TextStyle(
-                    color: scheme.error,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                recHint,
+                style: TextStyle(
+                  color: scheme.error,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        _VoiceState.uploading => Padding(
-            key: const ValueKey('up'),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 14, height: 14,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation(scheme.onSurfaceVariant),
-                  ),
+        ),
+      _VoiceState.uploading => Padding(
+          key: const ValueKey('up'),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 14, height: 14,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor:
+                      AlwaysStoppedAnimation(scheme.onSurfaceVariant),
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  '识别中${'.' * (1 + _tickCounter % 3)}',
-                  style: TextStyle(
-                    color: scheme.onSurfaceVariant,
-                    fontSize: 13,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '识别中${'.' * (1 + _tickCounter % 3)}',
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontSize: 13,
+                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-      },
-    );
+        ),
+    };
   }
 }
