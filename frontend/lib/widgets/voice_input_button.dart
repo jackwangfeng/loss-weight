@@ -101,11 +101,54 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
     _opened = true;
   }
 
-  Future<void> _toggle() async {
-    if (_state == _VoiceState.recording) {
-      await _stop();
-    } else if (_state == _VoiceState.idle) {
-      await _start();
+  // Press-and-hold interaction (WeChat / Doubao style):
+  //   tap-down  → start recording
+  //   tap-up    → stop + finalize
+  //   tap-cancel (gesture interrupted, e.g. user dragged away) → discard
+  // Anything <300ms gets treated as accidental and aborted; otherwise
+  // a 50ms tap captures noise that paraformer just answers as "empty".
+  static const _minHoldMs = 300;
+  DateTime? _pressStart;
+
+  void _onPressDown(_) {
+    if (_state != _VoiceState.idle) return;
+    _pressStart = DateTime.now();
+    _start();
+  }
+
+  void _onPressUp(_) async {
+    if (_state != _VoiceState.recording) return;
+    final held = _pressStart == null
+        ? Duration.zero
+        : DateTime.now().difference(_pressStart!);
+    _pressStart = null;
+    if (held.inMilliseconds < _minHoldMs) {
+      // Treat as accidental tap — abort silently, restore text.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('按住说话哦')),
+        );
+      }
+      await _abortInFlight();
+      return;
+    }
+    await _stop();
+  }
+
+  void _onPressCancel() async {
+    if (_state != _VoiceState.recording) return;
+    _pressStart = null;
+    await _abortInFlight();
+  }
+
+  Future<void> _abortInFlight() async {
+    try {
+      await _recorder.stopRecorder();
+    } catch (_) {}
+    if (widget.onProfileParsed != null) {
+      _resetFile();
+    } else {
+      _resetStreaming(restoreText: true);
     }
   }
 
@@ -408,20 +451,31 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
   }
 
   Widget _buildCurrent(ColorScheme scheme) {
-    switch (_state) {
-      case _VoiceState.idle:
-        return IconButton(
-          key: const ValueKey('idle'),
-          icon: Icon(Icons.mic, color: scheme.primary),
-          onPressed: _toggle,
-        );
-      case _VoiceState.recording:
-        return InkWell(
-          key: const ValueKey('rec'),
-          borderRadius: BorderRadius.circular(20),
-          onTap: _toggle,
-          child: Padding(
+    // Wrap every state in the same GestureDetector — the user's finger may
+    // press while we're "uploading" from a previous press; the new gesture
+    // is ignored (state guard inside the handlers) but at least it doesn't
+    // crash the InkWell ripple.
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: _onPressDown,
+      onTapUp: _onPressUp,
+      onTapCancel: _onPressCancel,
+      child: switch (_state) {
+        _VoiceState.idle => Tooltip(
+            key: const ValueKey('idle'),
+            message: '按住说话',
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Icon(Icons.mic, color: scheme.primary),
+            ),
+          ),
+        _VoiceState.recording => Container(
+            key: const ValueKey('rec'),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: scheme.error.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(20),
+            ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -447,39 +501,43 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
                   ),
                 ),
                 const SizedBox(width: 6),
-                Icon(Icons.stop_circle, color: scheme.error, size: 20),
+                Text(
+                  '松开发送',
+                  style: TextStyle(
+                    color: scheme.error,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ],
             ),
           ),
-        );
-      case _VoiceState.uploading:
-        final dots = '.' * (1 + _tickCounter % 3);
-        return Padding(
-          key: const ValueKey('up'),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: 14, height: 14,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor:
-                      AlwaysStoppedAnimation(scheme.onSurfaceVariant),
+        _VoiceState.uploading => Padding(
+            key: const ValueKey('up'),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 14, height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation(scheme.onSurfaceVariant),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '识别中$dots',
-                style: TextStyle(
-                  color: scheme.onSurfaceVariant,
-                  fontSize: 13,
-                  fontFeatures: const [FontFeature.tabularFigures()],
+                const SizedBox(width: 8),
+                Text(
+                  '识别中${'.' * (1 + _tickCounter % 3)}',
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontSize: 13,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        );
-    }
+      },
+    );
   }
 }
