@@ -88,6 +88,7 @@ func SetupAIRoutes(v1 *gin.RouterGroup, db *gorm.DB, logger *zap.Logger, cfg *co
 		ai.POST("/parse-weight", aiHandler.ParseWeight)
 		ai.POST("/parse-profile", aiHandler.ParseProfile)
 		ai.POST("/transcribe", aiHandler.Transcribe)
+		ai.GET("/transcribe/stream", aiHandler.TranscribeStream)
 		ai.POST("/transcribe-and-parse-profile", aiHandler.TranscribeAndParseProfile)
 		ai.POST("/daily-brief", aiHandler.GetDailyBrief)
 		ai.POST("/encouragement", aiHandler.GetEncouragement)

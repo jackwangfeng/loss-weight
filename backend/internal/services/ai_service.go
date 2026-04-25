@@ -46,14 +46,15 @@ type AIService struct {
 	visionAPIKey    string
 	visionAPIURL    string
 	deepgramAPIKey string // legacy; only used as fallback now
-	qwenAPIKey     string // DashScope key — primary STT via qwen3-omni-flash
+	qwenAPIKey     string // DashScope key — STT goes through paraformer-realtime-v2
+	streamProxy    *StreamTranscribeProxy
 	// allowMock 为 true 时，缺失 LLM key 会降级到写死的 mock 响应；
 	// 为 false（生产）时 hard fail，避免静默兜底骗调用方。
 	allowMock bool
 }
 
 func NewAIService(db *gorm.DB, logger *zap.Logger, llmAPIKey, llmAPIURL, visionAPIKey, visionAPIURL, deepgramAPIKey, qwenAPIKey string, allowMock bool) *AIService {
-	return &AIService{
+	s := &AIService{
 		db:             db,
 		logger:         logger,
 		llmAPIKey:      llmAPIKey,
@@ -64,6 +65,17 @@ func NewAIService(db *gorm.DB, logger *zap.Logger, llmAPIKey, llmAPIURL, visionA
 		qwenAPIKey:     qwenAPIKey,
 		allowMock:      allowMock,
 	}
+	if qwenAPIKey != "" {
+		s.streamProxy = NewStreamTranscribeProxy(logger, qwenAPIKey)
+	}
+	return s
+}
+
+// StreamProxy exposes the lazily-built stream transcribe proxy so the
+// gin handler can register a WebSocket route on /v1/ai/transcribe/stream
+// without needing yet another constructor parameter through routes.go.
+func (s *AIService) StreamProxy() *StreamTranscribeProxy {
+	return s.streamProxy
 }
 
 // languageName maps a locale code (en / zh / ...) to the full English
@@ -693,106 +705,63 @@ func (s *AIService) transcribeDeepgram(audioBase64, mimeType, locale string) (*T
 	}, nil
 }
 
-// transcribeQwen: primary STT path. Sends audio inline through DashScope's
-// chat-completions OpenAI-compat endpoint with qwen3-omni-flash, asking it
-// to literally transcribe (not paraphrase). Empirical中文 WER significantly
-// better than Deepgram nova-2 zh-CN on noisy phone-mic input, and we already
-// have the DashScope key, so one less vendor.
-func (s *AIService) transcribeQwen(audioBase64, mimeType, locale string) (*TranscribeResponse, error) {
+// transcribeParaformer: primary STT path. Hits DashScope's
+// paraformer-realtime-v2 (purpose-built ASR) over WebSocket through the
+// streamProxy, even for one-shot HTTP transcription — same upstream model
+// for both the realtime mic flow and the legacy batch endpoint, no second
+// implementation. Way cheaper + faster + more accurate than running an
+// LLM (qwen-omni) for what's basically a transcoder problem.
+func (s *AIService) transcribeParaformer(audioBase64, mimeType, locale string) (*TranscribeResponse, error) {
+	if s.streamProxy == nil {
+		return nil, errors.New("transcribe not configured")
+	}
+	raw, err := base64.StdEncoding.DecodeString(audioBase64)
+	if err != nil {
+		return nil, fmt.Errorf("decode base64: %w", err)
+	}
+
+	// Mime → paraformer codec hint. paraformer-realtime-v2 accepts:
+	//   pcm | wav | mp3 | aac | opus | speex | amr
+	// flutter_sound on Android records aacMP4 by default; we treat that as
+	// "aac" (the encoded payload is AAC-LC even when wrapped in MP4 framing
+	// — short clips frame-align cleanly).
 	if mimeType == "" {
 		mimeType = "audio/mp4"
 	}
-	// DashScope wants the format hint as the file extension only (not the
-	// full mime). Strip "audio/" and trim parameters like "; codecs=...".
 	format := strings.TrimPrefix(mimeType, "audio/")
 	if i := strings.IndexByte(format, ';'); i > 0 {
 		format = strings.TrimSpace(format[:i])
 	}
-	if format == "mpeg" {
+	switch format {
+	case "mp4", "x-m4a", "m4a":
+		format = "aac"
+	case "mpeg":
 		format = "mp3"
 	}
 
-	// Locale mostly matters for the instruction wording; the model's audio
-	// understanding is fully multilingual.
-	instruction := "把这段音频一字不漏地转写成文字。只输出原文内容，不要添加任何解释、不要改写、不要前后引号。如果有数字请保留为阿拉伯数字。"
-	switch strings.ToLower(locale) {
-	case "en", "en-us", "en-gb":
-		instruction = "Transcribe this audio verbatim. Output only the spoken text — no commentary, no quotes, keep digits as digits."
-	}
-
-	body := map[string]any{
-		"model": "qwen3-omni-flash",
-		"messages": []any{
-			map[string]any{
-				"role": "user",
-				"content": []any{
-					map[string]any{
-						"type": "input_audio",
-						"input_audio": map[string]any{
-							"data":   "data:" + mimeType + ";base64," + audioBase64,
-							"format": format,
-						},
-					},
-					map[string]any{"type": "text", "text": instruction},
-				},
-			},
-		},
-		"modalities": []string{"text"},
-	}
-	buf, _ := json.Marshal(body)
-
-	req, err := http.NewRequest("POST",
-		"https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-		bytes.NewReader(buf))
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	text, err := s.streamProxy.TranscribeBytes(ctx, raw, format)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+s.qwenAPIKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 60 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("qwen omni %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	var parsed struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.Unmarshal(respBody, &parsed); err != nil {
-		return nil, err
-	}
-	if len(parsed.Choices) == 0 {
-		return nil, errors.New("qwen omni: no choices")
-	}
-	text := strings.TrimSpace(parsed.Choices[0].Message.Content)
-	// Same digit-dot fix Deepgram needed (some models still emit 全角).
 	text = regexpDigitDot.ReplaceAllString(text, "$1.$2")
 	return &TranscribeResponse{
-		Text:       text,
-		Confidence: 0, // Qwen doesn't return a confidence; leave 0.
+		Text:       strings.TrimSpace(text),
+		Confidence: 0, // paraformer doesn't return a per-utterance confidence
 	}, nil
 }
 
-// TranscribeAudio: 语音转写优先级 — Qwen-Omni（主路）→ Deepgram（兜底，
-// 旧 key 还在就用）→ Gemini（最后兜底）→ mock（dev only）。字对字，
+// TranscribeAudio: 语音转写优先级 — Paraformer（主路，dedicated ASR via
+// WS) → Deepgram（兜底）→ Gemini（最后兜底）→ mock（dev only）。字对字，
 // 不做结构化、不 paraphrase。
 func (s *AIService) TranscribeAudio(req *TranscribeRequest) (*TranscribeResponse, error) {
 	if s.qwenAPIKey != "" {
-		r, err := s.transcribeQwen(req.AudioBase64, req.MimeType, req.Locale)
+		r, err := s.transcribeParaformer(req.AudioBase64, req.MimeType, req.Locale)
 		if err == nil {
 			return r, nil
 		}
-		s.logger.Warn("qwen omni transcribe failed, trying Deepgram fallback", zap.Error(err))
+		s.logger.Warn("paraformer transcribe failed, trying Deepgram fallback", zap.Error(err))
 	}
 	if s.deepgramAPIKey != "" {
 		r, err := s.transcribeDeepgram(req.AudioBase64, req.MimeType, req.Locale)

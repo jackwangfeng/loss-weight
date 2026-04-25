@@ -73,6 +73,25 @@ func NewAIHandler(service *services.AIService, logger *zap.Logger) *AIHandler {
 	}
 }
 
+// TranscribeStream upgrades the request to WebSocket and forwards audio to
+// DashScope paraformer-realtime-v2 via StreamTranscribeProxy. Latency
+// (perceived by phone): ~0.5s after speech end vs ~3.7s with the batch
+// path; partials stream in <1s of speaking, so the input box fills as the
+// user is still talking.
+func (h *AIHandler) TranscribeStream(c *gin.Context) {
+	proxy := h.service.StreamProxy()
+	if proxy == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "stream transcribe not configured"})
+		return
+	}
+	conn, err := wsUpgrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		h.logger.Warn("ws upgrade failed", zap.Error(err))
+		return
+	}
+	proxy.Handle(c.Request.Context(), conn)
+}
+
 func (h *AIHandler) RecognizeFood(c *gin.Context) {
 	var req services.RecognizeFoodRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
