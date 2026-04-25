@@ -77,7 +77,7 @@ func SetupAIRoutes(v1 *gin.RouterGroup, db *gorm.DB, logger *zap.Logger, cfg *co
 	visionAPIURL := cfg.VisionAPIURL
 
 	// debug 模式下，缺 LLM key 时允许返回 mock；生产模式 hard fail 避免静默兜底
-	aiService := services.NewAIService(db, logger, llmAPIKey, llmAPIURL, visionAPIKey, visionAPIURL, cfg.DeepgramAPIKey, cfg.Debug)
+	aiService := services.NewAIService(db, logger, llmAPIKey, llmAPIURL, visionAPIKey, visionAPIURL, cfg.DeepgramAPIKey, cfg.QwenAPIKey, cfg.Debug)
 	aiHandler := handlers.NewAIHandler(aiService, logger)
 
 	ai := v1.Group("/ai")

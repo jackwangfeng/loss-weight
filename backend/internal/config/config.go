@@ -28,7 +28,8 @@ type Config struct {
 	ChromaURL          string
 	GoogleClientID     string // OAuth 2.0 Web Client ID — audience for Google ID tokens (web/Android)
 	GoogleIOSClientID  string // OAuth 2.0 iOS Client ID — iOS-native Google Sign-In returns tokens with this aud
-	DeepgramAPIKey     string // Deepgram STT (nova-3 for en, nova-2 for zh-CN) — 3-4x faster than Gemini audio
+	DeepgramAPIKey     string // Legacy STT — fallback only; primary path now Qwen-Omni.
+	QwenAPIKey         string // DashScope key for Qwen-Omni ASR (中文 WER ~6% vs Deepgram nova-2 ~10-15%)
 }
 
 // Load reads configuration from file and environment variables
@@ -66,6 +67,7 @@ func Load(configPath string) (*Config, error) {
 	_ = viper.BindEnv("database_url", "DATABASE_URL")
 	_ = viper.BindEnv("redis_url", "REDIS_URL")
 	_ = viper.BindEnv("deepgram_api_key", "DEEPGRAM_API_KEY")
+	_ = viper.BindEnv("qwen_api_key", "QWEN_API_KEY", "DASHSCOPE_API_KEY")
 
 	// Try to read config file (optional)
 	if err := viper.ReadInConfig(); err != nil {
@@ -95,6 +97,7 @@ func Load(configPath string) (*Config, error) {
 		GoogleClientID:    viper.GetString("google_client_id"),
 		GoogleIOSClientID: viper.GetString("google_ios_client_id"),
 		DeepgramAPIKey:    viper.GetString("deepgram_api_key"),
+		QwenAPIKey:        viper.GetString("qwen_api_key"),
 	}
 
 	return config, nil

@@ -45,13 +45,14 @@ type AIService struct {
 	llmAPIURL       string
 	visionAPIKey    string
 	visionAPIURL    string
-	deepgramAPIKey  string // 空 → /transcribe 回退 Gemini
+	deepgramAPIKey string // legacy; only used as fallback now
+	qwenAPIKey     string // DashScope key — primary STT via qwen3-omni-flash
 	// allowMock 为 true 时，缺失 LLM key 会降级到写死的 mock 响应；
 	// 为 false（生产）时 hard fail，避免静默兜底骗调用方。
 	allowMock bool
 }
 
-func NewAIService(db *gorm.DB, logger *zap.Logger, llmAPIKey, llmAPIURL, visionAPIKey, visionAPIURL, deepgramAPIKey string, allowMock bool) *AIService {
+func NewAIService(db *gorm.DB, logger *zap.Logger, llmAPIKey, llmAPIURL, visionAPIKey, visionAPIURL, deepgramAPIKey, qwenAPIKey string, allowMock bool) *AIService {
 	return &AIService{
 		db:             db,
 		logger:         logger,
@@ -60,6 +61,7 @@ func NewAIService(db *gorm.DB, logger *zap.Logger, llmAPIKey, llmAPIURL, visionA
 		visionAPIKey:   visionAPIKey,
 		visionAPIURL:   visionAPIURL,
 		deepgramAPIKey: deepgramAPIKey,
+		qwenAPIKey:     qwenAPIKey,
 		allowMock:      allowMock,
 	}
 }
@@ -691,15 +693,112 @@ func (s *AIService) transcribeDeepgram(audioBase64, mimeType, locale string) (*T
 	}, nil
 }
 
-// TranscribeAudio: 语音转写。优先用 Deepgram（3-4x 更快），没配 key 时
-// 回退 Gemini。字对字，不做结构化、不 paraphrase。
+// transcribeQwen: primary STT path. Sends audio inline through DashScope's
+// chat-completions OpenAI-compat endpoint with qwen3-omni-flash, asking it
+// to literally transcribe (not paraphrase). Empirical中文 WER significantly
+// better than Deepgram nova-2 zh-CN on noisy phone-mic input, and we already
+// have the DashScope key, so one less vendor.
+func (s *AIService) transcribeQwen(audioBase64, mimeType, locale string) (*TranscribeResponse, error) {
+	if mimeType == "" {
+		mimeType = "audio/mp4"
+	}
+	// DashScope wants the format hint as the file extension only (not the
+	// full mime). Strip "audio/" and trim parameters like "; codecs=...".
+	format := strings.TrimPrefix(mimeType, "audio/")
+	if i := strings.IndexByte(format, ';'); i > 0 {
+		format = strings.TrimSpace(format[:i])
+	}
+	if format == "mpeg" {
+		format = "mp3"
+	}
+
+	// Locale mostly matters for the instruction wording; the model's audio
+	// understanding is fully multilingual.
+	instruction := "把这段音频一字不漏地转写成文字。只输出原文内容，不要添加任何解释、不要改写、不要前后引号。如果有数字请保留为阿拉伯数字。"
+	switch strings.ToLower(locale) {
+	case "en", "en-us", "en-gb":
+		instruction = "Transcribe this audio verbatim. Output only the spoken text — no commentary, no quotes, keep digits as digits."
+	}
+
+	body := map[string]any{
+		"model": "qwen3-omni-flash",
+		"messages": []any{
+			map[string]any{
+				"role": "user",
+				"content": []any{
+					map[string]any{
+						"type": "input_audio",
+						"input_audio": map[string]any{
+							"data":   "data:" + mimeType + ";base64," + audioBase64,
+							"format": format,
+						},
+					},
+					map[string]any{"type": "text", "text": instruction},
+				},
+			},
+		},
+		"modalities": []string{"text"},
+	}
+	buf, _ := json.Marshal(body)
+
+	req, err := http.NewRequest("POST",
+		"https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+		bytes.NewReader(buf))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+s.qwenAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("qwen omni %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var parsed struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return nil, err
+	}
+	if len(parsed.Choices) == 0 {
+		return nil, errors.New("qwen omni: no choices")
+	}
+	text := strings.TrimSpace(parsed.Choices[0].Message.Content)
+	// Same digit-dot fix Deepgram needed (some models still emit 全角).
+	text = regexpDigitDot.ReplaceAllString(text, "$1.$2")
+	return &TranscribeResponse{
+		Text:       text,
+		Confidence: 0, // Qwen doesn't return a confidence; leave 0.
+	}, nil
+}
+
+// TranscribeAudio: 语音转写优先级 — Qwen-Omni（主路）→ Deepgram（兜底，
+// 旧 key 还在就用）→ Gemini（最后兜底）→ mock（dev only）。字对字，
+// 不做结构化、不 paraphrase。
 func (s *AIService) TranscribeAudio(req *TranscribeRequest) (*TranscribeResponse, error) {
+	if s.qwenAPIKey != "" {
+		r, err := s.transcribeQwen(req.AudioBase64, req.MimeType, req.Locale)
+		if err == nil {
+			return r, nil
+		}
+		s.logger.Warn("qwen omni transcribe failed, trying Deepgram fallback", zap.Error(err))
+	}
 	if s.deepgramAPIKey != "" {
 		r, err := s.transcribeDeepgram(req.AudioBase64, req.MimeType, req.Locale)
 		if err == nil {
 			return r, nil
 		}
-		// Deepgram 失败（网络 / key 过期 / 格式不支持）→ 降级 Gemini。
 		s.logger.Warn("deepgram transcribe failed, falling back to Gemini", zap.Error(err))
 	}
 	if s.llmAPIKey == "" {

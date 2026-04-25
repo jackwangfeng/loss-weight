@@ -51,11 +51,12 @@ ssh -i "$SSH_KEY" \
    GEMINI_KEY=\$(aws secretsmanager get-secret-value --secret-id recompdaily/prod/gemini-api-key --query SecretString --output text)
    JWT_KEY=\$(aws secretsmanager get-secret-value --secret-id recompdaily/prod/jwt-secret --query SecretString --output text)
    DG_KEY=\$(aws secretsmanager get-secret-value --secret-id recompdaily/prod/deepgram-api-key --query SecretString --output text)
+   QWEN_KEY=\$(aws secretsmanager get-secret-value --secret-id recompdaily/prod/qwen-api-key --query SecretString --output text)
    aws ecr get-login-password | sudo docker login --username AWS --password-stdin 337909756117.dkr.ecr.ap-southeast-1.amazonaws.com >/dev/null 2>&1
    sudo docker pull $ECR_REPO:v1 2>&1 | tail -1
    sudo docker rm -f recompdaily >/dev/null 2>&1 || true
    sudo docker run -d --name recompdaily --network openim-docker_openim -p 8000:8000 --restart always \\
-     -e DATABASE_URL=\"\$DB_URL\" -e GEMINI_API_KEY=\"\$GEMINI_KEY\" -e SECRET_KEY=\"\$JWT_KEY\" -e DEEPGRAM_API_KEY=\"\$DG_KEY\" \\
+     -e DATABASE_URL=\"\$DB_URL\" -e GEMINI_API_KEY=\"\$GEMINI_KEY\" -e SECRET_KEY=\"\$JWT_KEY\" -e DEEPGRAM_API_KEY=\"\$DG_KEY\" -e QWEN_API_KEY=\"\$QWEN_KEY\" \\
      -e GEMINI_API_URL='https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent' \\
      -e VISION_API_URL='https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent' \\
      -e GOOGLE_CLIENT_ID='604310975641-chq87tal9oii607rigc1uq59vjsirgas.apps.googleusercontent.com' \\
