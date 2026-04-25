@@ -54,6 +54,12 @@ dependencies:
   flutter_sound: ^9.28.0
   permission_handler: ^11.3.1
 
+  # WebSocket client for streaming ASR (paraformer-realtime-v2 over backend
+  # WS proxy). Replaces the batch HTTP /v1/ai/transcribe path on the voice
+  # button — partials stream while user speaks, final lands ~0.5s after they
+  # release the mic instead of 4-5s after.
+  web_socket_channel: ^3.0.0
+
   # Markdown 渲染（AI 回复里的 **加粗**、列表、代码块）
   flutter_markdown: ^0.7.1
 
