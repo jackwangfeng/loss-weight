@@ -69,9 +69,11 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
   StreamSubscription? _wsSub;
   StreamController<Uint8List>? _audioCtrl;
   StreamSubscription<Uint8List>? _audioSub;
-  StreamSubscription<RecordingDisposition>? _ampSub;
-  // Last ~30 amplitude samples (0..1 normalized from decibels). Drives the
-  // floating waveform above the press-and-hold button.
+  // Last ~30 amplitude samples (0..1 normalized RMS of PCM chunks).
+  // Drives the floating waveform above the press-and-hold button. We
+  // compute these ourselves from the audio stream because flutter_sound's
+  // onProgress doesn't emit `decibels` in `toStream` mode (PCM bypasses
+  // the level-meter pipeline) — so the waveform was just sitting flat.
   final List<double> _amplitudes = [];
 
   // Press + drag plumbing (Doubao-style slide-up-to-cancel).
@@ -307,26 +309,29 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
     }
   }
 
-  void _startAmplitude() {
-    // Sample at ~12Hz — fast enough for a smooth bar dance, sparse enough to
-    // not flood setState. Normalize decibels (-60dB silence → 0,
-    // -10dB shouted speech → 1) using a clamp; flutter_sound rarely emits
-    // anything outside [-120, 0].
-    _recorder.setSubscriptionDuration(const Duration(milliseconds: 80));
-    _ampSub = _recorder.onProgress?.listen((e) {
-      if (!mounted) return;
-      final db = e.decibels ?? -60;
-      final norm = ((db + 60) / 50).clamp(0.0, 1.0);
-      setState(() {
-        _amplitudes.add(norm);
-        if (_amplitudes.length > 30) _amplitudes.removeAt(0);
-      });
-    });
+  // Compute an amplitude (0..1) for a PCM 16kHz mono 16-bit chunk by
+  // taking RMS of the int16 samples and normalising to a typical speech
+  // dynamic range. Cheap enough to run per-chunk inline (a 100ms chunk is
+  // 1600 samples = 3200 bytes; this is microseconds on any phone).
+  double _pcmAmplitude(Uint8List pcm) {
+    if (pcm.length < 2) return 0;
+    var sumSq = 0.0;
+    final n = pcm.length ~/ 2;
+    for (var i = 0; i + 1 < pcm.length; i += 2) {
+      // little-endian signed int16
+      var s = pcm[i] | (pcm[i + 1] << 8);
+      if (s & 0x8000 != 0) s = s - 0x10000;
+      sumSq += s * s;
+    }
+    final rms = (sumSq / n);
+    // sqrt of mean-square. int16 max 32768; speech RMS typically 1000-6000
+    // (-25..-15 dBFS). Divide by 6000 then clamp gives a lively dynamic
+    // range without the bars saturating mid-utterance.
+    final norm = (rms > 0 ? (rms.toDouble()) : 0) / (6000.0 * 6000.0);
+    return norm.clamp(0.0, 1.0).toDouble();
   }
 
   void _stopAmplitude() {
-    _ampSub?.cancel();
-    _ampSub = null;
     _amplitudes.clear();
   }
 
@@ -364,6 +369,18 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
       } catch (_) {
         // Sink closed under us — recording will stop on the next tick.
       }
+      // Drive the floating waveform: compute RMS from this chunk inline.
+      // flutter_sound's onProgress doesn't emit decibels in toStream/PCM
+      // mode, so we have to derive amplitude from the raw bytes ourselves.
+      final amp = _pcmAmplitude(chunk);
+      if (mounted && _state != _VoiceState.idle) {
+        setState(() {
+          _amplitudes.add(amp);
+          if (_amplitudes.length > 60) {
+            _amplitudes.removeRange(0, _amplitudes.length - 60);
+          }
+        });
+      }
     });
 
     await _recorder.startRecorder(
@@ -372,7 +389,6 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
       sampleRate: 16000,
       numChannels: 1,
     );
-    _startAmplitude();
   }
 
   Future<void> _startFileRecording() async {
@@ -385,7 +401,6 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
       sampleRate: 16000,
       numChannels: 1,
     );
-    _startAmplitude();
   }
 
   Uri _streamUrl() {
@@ -663,7 +678,8 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
         children: [
           // Waveform — heights animate to current amplitude samples.
           SizedBox(
-            height: 28,
+            height: 40,
+            width: 160,
             child: _Waveform(
               amplitudes: _amplitudes,
               color: cancelTint,
@@ -804,10 +820,10 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
   }
 }
 
-/// Floating waveform on top of the press-and-hold pill. Renders 24 bars
-/// whose heights map directly to the recent amplitude buffer. When
-/// `cancelMode` is on we desaturate to grey-red and shrink so it visually
-/// "deadens" — telling the user "you're about to throw this away".
+/// Floating waveform on top of the press-and-hold pill. 9 fat bars,
+/// mirrored about the centerline so they grow both up and down like
+/// audio meters. We sqrt-curve the amplitudes so quiet speech still
+/// pumps the bars instead of looking dead.
 class _Waveform extends StatelessWidget {
   final List<double> amplitudes;
   final Color color;
@@ -818,7 +834,7 @@ class _Waveform extends StatelessWidget {
     required this.cancelMode,
   });
 
-  static const _barCount = 24;
+  static const _barCount = 9;
 
   @override
   Widget build(BuildContext context) {
@@ -830,7 +846,7 @@ class _Waveform extends StatelessWidget {
         color: color,
         attenuate: cancelMode ? 0.4 : 1.0,
       ),
-      size: const Size.fromHeight(28),
+      size: const Size.fromHeight(40),
     );
   }
 
@@ -853,22 +869,26 @@ class _WaveformPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final n = samples.length;
-    final gap = 2.0;
+    final gap = 4.0;
     final barW = (size.width - gap * (n - 1)) / n;
     final paint = Paint()
       ..color = color
       ..style = PaintingStyle.fill;
+    final cy = size.height / 2;
+    final maxHalf = size.height / 2;
 
     for (var i = 0; i < n; i++) {
-      // Floor-clamp so silent passages still show a thin baseline tick —
-      // makes the bar bank feel "alive" instead of "dead until you speak".
-      final h = ((samples[i].clamp(0.0, 1.0) * 0.85 + 0.05) * size.height) *
-          attenuate;
+      // sqrt curve amplifies small amplitudes (typical speech sits in
+      // the 0.05–0.3 range) so the bars actually *jump* during normal
+      // talking instead of inching up. min half-height keeps a 4px
+      // floor so silence is still visible as a row of dots.
+      final raw = samples[i].clamp(0.0, 1.0).toDouble();
+      final shaped = raw == 0 ? 0.0 : (raw * raw + raw * 4).clamp(0.0, 1.0);
+      final half = (shaped * (maxHalf - 4) + 4) * attenuate;
       final x = i * (barW + gap);
-      final y = (size.height - h) / 2;
       final rect = RRect.fromRectAndRadius(
-        Rect.fromLTWH(x, y, barW, h),
-        const Radius.circular(2),
+        Rect.fromLTWH(x, cy - half, barW, half * 2),
+        Radius.circular(barW / 2),
       );
       canvas.drawRRect(rect, paint);
     }
