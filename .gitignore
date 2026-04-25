@@ -123,3 +123,7 @@ frontend/test_tabs.js
 
 # IntelliJ
 *.iml
+
+# Google OAuth client JSON downloaded from Cloud Console — public client_id
+# is already hardcoded in code; this file is just clutter.
+client_secret_*.apps.googleusercontent.com.json
