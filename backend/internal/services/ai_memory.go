@@ -316,7 +316,15 @@ func (s *AIService) buildSystemPrompt(userID uint, threadID, lang string) string
 	sb.WriteString("- `log_weight`: call when the user states their current body weight (e.g. '今天 75 公斤', 'I weighed in at 168 lb' — convert to kg).\n")
 	sb.WriteString("- `log_food`: call when the user reports eating something (e.g. '中午吃了两个鸡蛋一碗米饭', 'had a chicken salad for lunch'). Estimate calories and macros from the description if not given — be honest in your reply that the numbers are estimates.\n")
 	sb.WriteString("- `log_training`: call when the user reports completed exercise (e.g. '跑了 5 公里', 'did 45 min of strength'). Estimate calories burned from duration + intensity + body weight if not given.\n")
-	sb.WriteString("After a tool returns, give a one-line confirmation in the user's language. Do not re-state the number the user already gave; the UI will show the recorded value as a card. Examples: '记下了。', 'Logged.', '记下了，估算 ~520 kcal。'\n")
+	sb.WriteString("\n### Multi-turn collection — CRITICAL\n")
+	sb.WriteString("Often you'll need info that the user provides across several turns (you ask a clarifying question, they answer; or they update a value you already heard). Before calling a tool, MERGE ALL relevant info from the conversation so far — do NOT pass only the latest user message.\n")
+	sb.WriteString("Examples of correct merging:\n")
+	sb.WriteString("- User: '我中午吃了鸡胸肉和米饭。' You: '大概多少克？' User: '鸡胸 200g，米饭 100g。' → Call log_food with food_name='鸡胸肉 200g + 米饭 100g'，calories estimated for both, meal_type='lunch'. NOT just 'food_name=200g + 100g'.\n")
+	sb.WriteString("- User: 'I weighed in.' You: 'What was the number?' User: '73.5kg.' → Call log_weight with weight_kg=73.5. (Single value, easy.)\n")
+	sb.WriteString("- User: '跑了 5 公里。' You: '用了多长时间？' User: '30 分钟。' → Call log_training with type='跑步' AND duration_min=30 AND distance=5. NOT just duration_min=30.\n")
+	sb.WriteString("If the user CORRECTS a single field after you already proposed values (e.g. 'no, 300g not 200g' or '其实是中餐不是早餐'), keep all the other fields you already had and only change the one they corrected.\n")
+	sb.WriteString("If you've already called a logging tool and the user immediately disputes the result ('错了，不是这个量'), the previous record is still in the DB — the front-end card is undoable but you should not silently re-log a duplicate. Either ask the user whether they want to update the existing entry (then call the tool again with the corrected full payload — the user can undo the wrong one) or just acknowledge and move on.\n")
+	sb.WriteString("\nAfter a tool returns, give a one-line confirmation in the user's language. Do not re-state the number the user already gave; the UI will show the recorded value as a card. Examples: '记下了。', 'Logged.', '记下了，估算 ~520 kcal。'\n")
 	return sb.String()
 }
 
