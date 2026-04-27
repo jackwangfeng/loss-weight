@@ -65,18 +65,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get actionLog => '记录';
 
   @override
-  String get actionTakePhoto => '拍照';
-
-  @override
-  String get actionChooseFromLibrary => '从相册选';
-
-  @override
-  String get actionRecognizeFromPhoto => '拍照识别';
-
-  @override
-  String get actionLogFoodFromPhoto => '拍照记录饮食';
-
-  @override
   String get toastSignedOut => '已退出';
 
   @override
@@ -99,9 +87,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get toastPleaseSignIn => '请先登录';
-
-  @override
-  String get toastUploadNotConfigured => '图片上传尚未配置';
 
   @override
   String errorLoadFailed(String error) {

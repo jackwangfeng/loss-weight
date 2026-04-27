@@ -33,7 +33,6 @@ dependencies:
   shared_preferences: ^2.2.2
   
   # Image
-  image_picker: ^1.0.7
   cached_network_image: ^3.3.1
   
   # Routing

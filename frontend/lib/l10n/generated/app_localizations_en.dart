@@ -65,18 +65,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get actionLog => 'Log';
 
   @override
-  String get actionTakePhoto => 'Take photo';
-
-  @override
-  String get actionChooseFromLibrary => 'Choose from library';
-
-  @override
-  String get actionRecognizeFromPhoto => 'Recognize from photo';
-
-  @override
-  String get actionLogFoodFromPhoto => 'Log food from photo';
-
-  @override
   String get toastSignedOut => 'Signed out';
 
   @override
@@ -99,9 +87,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get toastPleaseSignIn => 'Please sign in first';
-
-  @override
-  String get toastUploadNotConfigured => 'Image upload not configured yet';
 
   @override
   String errorLoadFailed(String error) {

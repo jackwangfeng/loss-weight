@@ -24,10 +24,6 @@
   "actionAskCoach": "Ask coach",
   "actionEstimate": "Estimate",
   "actionLog": "Log",
-  "actionTakePhoto": "Take photo",
-  "actionChooseFromLibrary": "Choose from library",
-  "actionRecognizeFromPhoto": "Recognize from photo",
-  "actionLogFoodFromPhoto": "Log food from photo",
 
   "toastSignedOut": "Signed out",
   "toastSignedIn": "Signed in",
@@ -37,7 +33,6 @@
   "toastLogged": "Logged",
   "toastUpdated": "Updated",
   "toastPleaseSignIn": "Please sign in first",
-  "toastUploadNotConfigured": "Image upload not configured yet",
 
   "errorLoadFailed": "Load failed: {error}",
   "@errorLoadFailed": { "placeholders": { "error": { "type": "String" } } },

@@ -206,30 +206,6 @@ abstract class AppLocalizations {
   /// **'Log'**
   String get actionLog;
 
-  /// No description provided for @actionTakePhoto.
-  ///
-  /// In en, this message translates to:
-  /// **'Take photo'**
-  String get actionTakePhoto;
-
-  /// No description provided for @actionChooseFromLibrary.
-  ///
-  /// In en, this message translates to:
-  /// **'Choose from library'**
-  String get actionChooseFromLibrary;
-
-  /// No description provided for @actionRecognizeFromPhoto.
-  ///
-  /// In en, this message translates to:
-  /// **'Recognize from photo'**
-  String get actionRecognizeFromPhoto;
-
-  /// No description provided for @actionLogFoodFromPhoto.
-  ///
-  /// In en, this message translates to:
-  /// **'Log food from photo'**
-  String get actionLogFoodFromPhoto;
-
   /// No description provided for @toastSignedOut.
   ///
   /// In en, this message translates to:
@@ -277,12 +253,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Please sign in first'**
   String get toastPleaseSignIn;
-
-  /// No description provided for @toastUploadNotConfigured.
-  ///
-  /// In en, this message translates to:
-  /// **'Image upload not configured yet'**
-  String get toastUploadNotConfigured;
 
   /// No description provided for @errorLoadFailed.
   ///

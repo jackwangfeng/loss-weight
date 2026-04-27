@@ -21,10 +21,6 @@
   "actionAskCoach": "问教练",
   "actionEstimate": "估算",
   "actionLog": "记录",
-  "actionTakePhoto": "拍照",
-  "actionChooseFromLibrary": "从相册选",
-  "actionRecognizeFromPhoto": "拍照识别",
-  "actionLogFoodFromPhoto": "拍照记录饮食",
 
   "toastSignedOut": "已退出",
   "toastSignedIn": "登录成功",
@@ -34,7 +30,6 @@
   "toastLogged": "已记录",
   "toastUpdated": "已更新",
   "toastPleaseSignIn": "请先登录",
-  "toastUploadNotConfigured": "图片上传尚未配置",
 
   "errorLoadFailed": "加载失败：{error}",
   "errorSaveFailed": "保存失败：{error}",

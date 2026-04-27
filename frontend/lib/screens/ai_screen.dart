@@ -1,8 +1,6 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
-import 'package:image_picker/image_picker.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/locale_provider.dart';
@@ -484,51 +482,6 @@ class AIScreenState extends State<AIScreen> {
     }
   }
 
-  Future<void> _pickImage() async {
-    final l10n = AppLocalizations.of(context);
-    final ImagePicker picker = ImagePicker();
-
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Wrap(
-          children: [
-            ListTile(
-              leading: const Icon(Icons.camera_alt),
-              title: Text(l10n.actionTakePhoto),
-              onTap: () async {
-                Navigator.pop(context);
-                final XFile? image = await picker.pickImage(source: ImageSource.camera);
-                if (image != null) {
-                  _handleImageUpload(File(image.path));
-                }
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: Text(l10n.actionChooseFromLibrary),
-              onTap: () async {
-                Navigator.pop(context);
-                final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-                if (image != null) {
-                  _handleImageUpload(File(image.path));
-                }
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _handleImageUpload(File imageFile) async {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppLocalizations.of(context).toastUploadNotConfigured)),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -839,12 +792,6 @@ class AIScreenState extends State<AIScreen> {
       child: SafeArea(
         child: Row(
           children: [
-            // Camera (food photo) — same on both modes.
-            IconButton(
-              onPressed: _pickImage,
-              icon: const Icon(Icons.camera_alt),
-              tooltip: l10n.actionLogFoodFromPhoto,
-            ),
             // Mode-toggle: keyboard ↔ voice. Tap flips _voiceMode; the
             // input area swaps between text field+send vs full press-to-talk.
             IconButton(
