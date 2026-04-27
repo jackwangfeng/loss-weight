@@ -5,8 +5,7 @@
   "appTagline": "Your daily recomp coach",
 
   "navToday": "Today",
-  "navLog": "Log",
-  "navCoach": "Coach",
+  "navAssistant": "Assistant",
   "navMe": "Me",
 
   "actionSave": "Save",
@@ -341,5 +340,24 @@
   "quickSetupAiHint": "Say it in one line (e.g. '35yo male, 180cm 82kg, want to cut to 75') — AI fills the fields below",
   "quickSetupAiParse": "Fill with AI",
   "quickSetupAiEmpty": "Type or speak something first.",
-  "quickSetupAiFailed": "AI didn't understand. Try again or fill manually."
+  "quickSetupAiFailed": "AI didn't understand. Try again or fill manually.",
+
+  "actionCardLoggedWeight": "Weight logged",
+  "actionCardLoggedWeightValue": "{weight} kg",
+  "@actionCardLoggedWeightValue": {
+    "placeholders": {"weight": {"type": "String"}}
+  },
+  "actionCardLoggedFood": "Food logged",
+  "actionCardLoggedFoodValue": "{name} · {calories} kcal",
+  "@actionCardLoggedFoodValue": {
+    "placeholders": {"name": {"type": "String"}, "calories": {"type": "String"}}
+  },
+  "actionCardLoggedTraining": "Training logged",
+  "actionCardLoggedTrainingValue": "{type} · {minutes} min · {calories} kcal",
+  "@actionCardLoggedTrainingValue": {
+    "placeholders": {"type": {"type": "String"}, "minutes": {"type": "String"}, "calories": {"type": "String"}}
+  },
+  "actionCardUndo": "Undo",
+  "actionCardUndone": "Undone",
+  "actionCardUndoFailed": "Couldn't undo, try again."
 }

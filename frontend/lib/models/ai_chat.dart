@@ -6,6 +6,10 @@ class AIChatMessage {
   final int tokens;
   final String threadId;
   final DateTime createdAt;
+  // 当 assistant 通过工具落库时（如 log_weight），后端会附带 actionKind +
+  // actionPayload（JSON 字符串）。前端据此在气泡下方渲染卡片。
+  final String? actionKind;
+  final String? actionPayload;
 
   AIChatMessage({
     required this.id,
@@ -15,7 +19,28 @@ class AIChatMessage {
     this.tokens = 0,
     required this.threadId,
     required this.createdAt,
+    this.actionKind,
+    this.actionPayload,
   });
+
+  AIChatMessage copyWith({
+    int? id,
+    String? content,
+    String? actionKind,
+    String? actionPayload,
+  }) {
+    return AIChatMessage(
+      id: id ?? this.id,
+      userId: userId,
+      role: role,
+      content: content ?? this.content,
+      tokens: tokens,
+      threadId: threadId,
+      createdAt: createdAt,
+      actionKind: actionKind ?? this.actionKind,
+      actionPayload: actionPayload ?? this.actionPayload,
+    );
+  }
 
   factory AIChatMessage.fromJson(Map<String, dynamic> json) {
     return AIChatMessage(
@@ -26,6 +51,8 @@ class AIChatMessage {
       tokens: json['tokens'] ?? 0,
       threadId: json['thread_id'] ?? '',
       createdAt: DateTime.parse(json['created_at'] ?? DateTime.now().toIso8601String()),
+      actionKind: (json['action_kind'] as String?)?.isEmpty == true ? null : json['action_kind'] as String?,
+      actionPayload: (json['action_payload'] as String?)?.isEmpty == true ? null : json['action_payload'] as String?,
     );
   }
 }

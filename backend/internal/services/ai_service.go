@@ -20,11 +20,18 @@ import (
 )
 
 // StreamChunk 聊天流式输出的一帧。
+//
+// Action / ActionPayload: AI agent 自己决定调用工具（log_weight 等）后，
+// 后端先执行落库，再把结果作为单独一帧推给前端，前端据此渲染可撤销卡片。
+// ActionPayload 是 JSON-encoded string（用 string 而非 map 是为了 SSE 序列化稳定 +
+// 前端按需解析）。
 type StreamChunk struct {
-	Delta     string `json:"delta,omitempty"`
-	MessageID uint   `json:"message_id,omitempty"`
-	Error     string `json:"error,omitempty"`
-	Done      bool   `json:"done,omitempty"`
+	Delta         string `json:"delta,omitempty"`
+	MessageID     uint   `json:"message_id,omitempty"`
+	Error         string `json:"error,omitempty"`
+	Done          bool   `json:"done,omitempty"`
+	Action        string `json:"action,omitempty"`         // e.g. "log_weight"
+	ActionPayload string `json:"action_payload,omitempty"` // JSON string
 }
 
 // Gemini 默认端点（gemini-pro 已被 Google 下线）。可通过 config 的
@@ -1354,7 +1361,12 @@ func (s *AIService) callLLM(messages []ChatMessage) (*ChatMessage, error) {
 
 // callLLMStream: 调 Gemini streamGenerateContent?alt=sse，按增量文本往 channel 里喂。
 // channel 关闭意味着 stream 结束（正常或错误，Err 字段里带信息）。
-func (s *AIService) callLLMStream(ctx context.Context, messages []ChatMessage) (<-chan StreamChunk, error) {
+//
+// Tool calling 循环：每一轮 streamGenerate 出来的 functionCall 集中收齐，
+// 后端本地执行（落库、emit action chunk），然后把 model 的 functionCall +
+// 我们的 functionResponse 拼回 contents，再发下一轮，直到 model 不再调工具
+// 或达到 maxToolIterations 上限。
+func (s *AIService) callLLMStream(ctx context.Context, userID uint, messages []ChatMessage) (<-chan StreamChunk, error) {
 	apiURL := s.llmAPIURL
 	if apiURL == "" {
 		apiURL = defaultGeminiURL
@@ -1374,11 +1386,87 @@ func (s *AIService) callLLMStream(ctx context.Context, messages []ChatMessage) (
 		}
 		contents = append(contents, map[string]interface{}{
 			"role":  role,
-			"parts": []map[string]string{{"text": msg.Content}},
+			"parts": []map[string]interface{}{{"text": msg.Content}},
 		})
 	}
+
+	out := make(chan StreamChunk, 16)
+	go func() {
+		defer close(out)
+		for iter := 0; iter < maxToolIterations; iter++ {
+			calls, err := s.streamOneTurn(ctx, streamURL, contents, systemTexts, out)
+			if err != nil {
+				select {
+				case out <- StreamChunk{Error: err.Error()}:
+				case <-ctx.Done():
+				}
+				return
+			}
+			if len(calls) == 0 {
+				return
+			}
+			// 把 model 的 functionCall part 拼成一条 model 消息
+			modelParts := make([]map[string]interface{}, 0, len(calls))
+			for _, c := range calls {
+				modelParts = append(modelParts, map[string]interface{}{
+					"functionCall": map[string]interface{}{
+						"name": c.Name,
+						"args": c.Args,
+					},
+				})
+			}
+			contents = append(contents, map[string]interface{}{
+				"role":  "model",
+				"parts": modelParts,
+			})
+
+			// 逐个执行 + 把结果拼成一条 user 消息（functionResponse parts）
+			respParts := make([]map[string]interface{}, 0, len(calls))
+			for _, c := range calls {
+				result, actionChunk, err := s.executeTool(userID, c)
+				if err != nil {
+					s.logger.Warn("tool execution failed",
+						zap.String("tool", c.Name), zap.Error(err))
+				}
+				if actionChunk != nil {
+					select {
+					case out <- *actionChunk:
+					case <-ctx.Done():
+						return
+					}
+				}
+				respParts = append(respParts, map[string]interface{}{
+					"functionResponse": map[string]interface{}{
+						"name":     c.Name,
+						"response": result,
+					},
+				})
+			}
+			contents = append(contents, map[string]interface{}{
+				"role":  "user",
+				"parts": respParts,
+			})
+		}
+		// 兜底：到达迭代上限还在调工具，强制收尾。
+		s.logger.Warn("tool loop hit max iterations", zap.Int("max", maxToolIterations))
+	}()
+	return out, nil
+}
+
+// streamOneTurn 发一次 streamGenerateContent 请求。文本 delta 直接转发到 out，
+// 收到的 functionCall 不转发，而是聚合返回给调用方决定下一步。
+func (s *AIService) streamOneTurn(
+	ctx context.Context,
+	streamURL string,
+	contents []map[string]interface{},
+	systemTexts []string,
+	out chan<- StreamChunk,
+) ([]toolCall, error) {
 	payload := map[string]interface{}{
 		"contents": contents,
+		"tools": []map[string]interface{}{
+			{"function_declarations": s.toolDeclarations()},
+		},
 		"generationConfig": map[string]interface{}{
 			"temperature":     0.7,
 			"maxOutputTokens": 4096,
@@ -1405,68 +1493,70 @@ func (s *AIService) callLLMStream(ctx context.Context, messages []ChatMessage) (
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	// 流式不设总超时；依赖 ctx 取消
 	client := &http.Client{}
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("stream request: %w", err)
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
 		return nil, fmt.Errorf("LLM stream API %d: %s", resp.StatusCode, string(body))
 	}
 
-	out := make(chan StreamChunk, 16)
-	go func() {
-		defer close(out)
-		defer resp.Body.Close()
-
-		scanner := bufio.NewScanner(resp.Body)
-		scanner.Buffer(make([]byte, 64*1024), 1024*1024)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if !strings.HasPrefix(line, "data: ") {
-				continue
-			}
-			data := strings.TrimPrefix(line, "data: ")
-			if data == "" || data == "[DONE]" {
-				continue
-			}
-			var parsed struct {
-				Candidates []struct {
-					Content struct {
-						Parts []struct {
-							Text string `json:"text"`
-						} `json:"parts"`
-					} `json:"content"`
-				} `json:"candidates"`
-			}
-			if err := json.Unmarshal([]byte(data), &parsed); err != nil {
-				s.logger.Warn("stream chunk parse", zap.Error(err))
-				continue
-			}
-			for _, cand := range parsed.Candidates {
-				for _, part := range cand.Content.Parts {
-					if part.Text == "" {
-						continue
-					}
-					select {
-					case out <- StreamChunk{Delta: part.Text}:
-					case <-ctx.Done():
-						return
-					}
+	var calls []toolCall
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := strings.TrimPrefix(line, "data: ")
+		if data == "" || data == "[DONE]" {
+			continue
+		}
+		var parsed struct {
+			Candidates []struct {
+				Content struct {
+					Parts []struct {
+						Text         string `json:"text,omitempty"`
+						FunctionCall *struct {
+							Name string                 `json:"name"`
+							Args map[string]interface{} `json:"args"`
+						} `json:"functionCall,omitempty"`
+					} `json:"parts"`
+				} `json:"content"`
+			} `json:"candidates"`
+		}
+		if err := json.Unmarshal([]byte(data), &parsed); err != nil {
+			s.logger.Warn("stream chunk parse", zap.Error(err))
+			continue
+		}
+		for _, cand := range parsed.Candidates {
+			for _, part := range cand.Content.Parts {
+				if part.FunctionCall != nil && part.FunctionCall.Name != "" {
+					calls = append(calls, toolCall{
+						Name: part.FunctionCall.Name,
+						Args: part.FunctionCall.Args,
+					})
+					continue
+				}
+				if part.Text == "" {
+					continue
+				}
+				select {
+				case out <- StreamChunk{Delta: part.Text}:
+				case <-ctx.Done():
+					return calls, ctx.Err()
 				}
 			}
 		}
-		if err := scanner.Err(); err != nil {
-			select {
-			case out <- StreamChunk{Error: err.Error()}:
-			default:
-			}
-		}
-	}()
-	return out, nil
+	}
+	if err := scanner.Err(); err != nil {
+		return calls, err
+	}
+	return calls, nil
 }
 
 // ChatStream: 流式版 Chat。客户端收到的 chunks:
@@ -1522,7 +1612,7 @@ func (s *AIService) ChatStream(ctx context.Context, req *ChatRequest) (<-chan St
 		return nil, err
 	}
 
-	upstream, err := s.callLLMStream(ctx, messages)
+	upstream, err := s.callLLMStream(ctx, req.UserID, messages)
 	if err != nil {
 		return nil, err
 	}
@@ -1531,6 +1621,9 @@ func (s *AIService) ChatStream(ctx context.Context, req *ChatRequest) (<-chan St
 	go func() {
 		defer close(out)
 		var sb strings.Builder
+		// 捕捉最后一次 action 贴到落库消息上。MVP 只做单工具，
+		// 多工具同回合极少见，先取最后一次。
+		var lastActionKind, lastActionPayload string
 		for chunk := range upstream {
 			if chunk.Error != "" {
 				select {
@@ -1538,6 +1631,16 @@ func (s *AIService) ChatStream(ctx context.Context, req *ChatRequest) (<-chan St
 				case <-ctx.Done():
 				}
 				return
+			}
+			if chunk.Action != "" {
+				lastActionKind = chunk.Action
+				lastActionPayload = chunk.ActionPayload
+				select {
+				case out <- chunk:
+				case <-ctx.Done():
+					return
+				}
+				continue
 			}
 			if chunk.Delta != "" {
 				sb.WriteString(chunk.Delta)
@@ -1549,7 +1652,9 @@ func (s *AIService) ChatStream(ctx context.Context, req *ChatRequest) (<-chan St
 			}
 		}
 		full := sb.String()
-		if full == "" {
+		// 即便 model 没产生任何文本（罕见：只调工具直接结束），
+		// 仍要落库一条 assistant 占位，以便历史能渲染卡片。
+		if full == "" && lastActionKind == "" {
 			select {
 			case out <- StreamChunk{Done: true, Error: "LLM returned empty response"}:
 			case <-ctx.Done():
@@ -1559,6 +1664,8 @@ func (s *AIService) ChatStream(ctx context.Context, req *ChatRequest) (<-chan St
 		m := &models.AIChatMessage{
 			UserID: req.UserID, Role: "assistant",
 			Content: full, ThreadID: req.ThreadID,
+			ActionKind:    lastActionKind,
+			ActionPayload: lastActionPayload,
 		}
 		if err := s.db.Create(m).Error; err != nil {
 			s.logger.Error("save assistant message failed", zap.Error(err))

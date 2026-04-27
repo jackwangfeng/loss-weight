@@ -5,8 +5,7 @@
   "appTagline": "你的每日身体重塑教练",
 
   "navToday": "今日",
-  "navLog": "记录",
-  "navCoach": "教练",
+  "navAssistant": "助手",
   "navMe": "我的",
 
   "actionSave": "保存",
@@ -267,5 +266,15 @@
   "quickSetupAiHint": "用一句话描述自己（例：35 岁男 180cm 82kg 想减到 75），AI 自动填下面",
   "quickSetupAiParse": "让 AI 填",
   "quickSetupAiEmpty": "先输入或说一句话。",
-  "quickSetupAiFailed": "AI 没看懂，再试一次或手动填。"
+  "quickSetupAiFailed": "AI 没看懂，再试一次或手动填。",
+
+  "actionCardLoggedWeight": "已记录体重",
+  "actionCardLoggedWeightValue": "{weight} kg",
+  "actionCardLoggedFood": "已记录饮食",
+  "actionCardLoggedFoodValue": "{name} · {calories} kcal",
+  "actionCardLoggedTraining": "已记录训练",
+  "actionCardLoggedTrainingValue": "{type} · {minutes} 分钟 · {calories} kcal",
+  "actionCardUndo": "撤销",
+  "actionCardUndone": "已撤销",
+  "actionCardUndoFailed": "撤销失败，请重试。"
 }

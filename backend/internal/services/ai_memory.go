@@ -308,7 +308,15 @@ func (s *AIService) buildSystemPrompt(userID uint, threadID, lang string) string
 	}
 
 	sb.WriteString(fmt.Sprintf("Reply in %s. Be specific. Name the number, the food, or the protocol — never vague advice. ", lang))
-	sb.WriteString("If the user asks about BMR, TDEE, calories, or macros, read the pre-computed values above and state the number directly.")
+	sb.WriteString("If the user asks about BMR, TDEE, calories, or macros, read the pre-computed values above and state the number directly.\n\n")
+
+	// Tool usage rules — keep concise; full schemas come via the API tools field.
+	sb.WriteString("## Tools\n")
+	sb.WriteString("You can act on the user's data via tools. When the user reports a measurement or fact you can record, CALL THE TOOL — do not just acknowledge. The chat is the only data-entry surface; if you don't call the tool, the data is not recorded.\n")
+	sb.WriteString("- `log_weight`: call when the user states their current body weight (e.g. '今天 75 公斤', 'I weighed in at 168 lb' — convert to kg).\n")
+	sb.WriteString("- `log_food`: call when the user reports eating something (e.g. '中午吃了两个鸡蛋一碗米饭', 'had a chicken salad for lunch'). Estimate calories and macros from the description if not given — be honest in your reply that the numbers are estimates.\n")
+	sb.WriteString("- `log_training`: call when the user reports completed exercise (e.g. '跑了 5 公里', 'did 45 min of strength'). Estimate calories burned from duration + intensity + body weight if not given.\n")
+	sb.WriteString("After a tool returns, give a one-line confirmation in the user's language. Do not re-state the number the user already gave; the UI will show the recorded value as a card. Examples: '记下了。', 'Logged.', '记下了，估算 ~520 kcal。'\n")
 	return sb.String()
 }
 

@@ -8,7 +8,6 @@ import '../providers/locale_provider.dart';
 import '../providers/user_provider.dart';
 import '../screens/login_screen.dart';
 import '../utils/labels.dart';
-import 'records_screen.dart';
 import 'ai_screen.dart';
 import 'profile_screen.dart';
 import '../services/ai_service.dart';
@@ -31,8 +30,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
-  int _recordsTab = 0;
-  // Key lets us poke AIScreen when the Coach tab gains focus so it can
+  // Key lets us poke AIScreen when the Assistant tab gains focus so it can
   // delta-refresh from the backend instead of showing the stale cached
   // thread that an IndexedStack-mounted screen would otherwise keep.
   final GlobalKey<AIScreenState> _aiKey = GlobalKey<AIScreenState>();
@@ -57,23 +55,16 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void jumpToRecords(int subTab) {
-    setState(() {
-      _selectedIndex = 1;
-      _recordsTab = subTab;
-    });
-  }
-
   void jumpToCoach() {
     setState(() {
-      _selectedIndex = 2;
+      _selectedIndex = 1;
     });
     _aiKey.currentState?.refreshIfStale();
   }
 
   void jumpToProfile() {
     setState(() {
-      _selectedIndex = 3;
+      _selectedIndex = 2;
     });
   }
 
@@ -90,7 +81,6 @@ class _HomeScreenState extends State<HomeScreen> {
             index: _selectedIndex,
             children: [
               DashboardScreen(user: user, isLoggedIn: isLoggedIn),
-              RecordsScreen(key: ValueKey('records-$_recordsTab'), initialTab: _recordsTab),
               AIScreen(key: _aiKey),
               const ProfileScreen(),
             ],
@@ -101,10 +91,10 @@ class _HomeScreenState extends State<HomeScreen> {
               setState(() {
                 _selectedIndex = index;
               });
-              // Tab gaining focus = chance for Coach thread to have
+              // Assistant tab gaining focus = chance for the thread to have
               // diverged from what we cached. Fire-and-forget; the method
               // is throttled + self-guarded.
-              if (index == 2) {
+              if (index == 1) {
                 _aiKey.currentState?.refreshIfStale();
               }
             },
@@ -115,14 +105,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 label: l10n.navToday,
               ),
               NavigationDestination(
-                icon: const Icon(Icons.edit_note_outlined),
-                selectedIcon: const Icon(Icons.edit_note),
-                label: l10n.navLog,
-              ),
-              NavigationDestination(
                 icon: const Icon(Icons.chat_outlined),
                 selectedIcon: const Icon(Icons.chat),
-                label: l10n.navCoach,
+                label: l10n.navAssistant,
               ),
               NavigationDestination(
                 icon: const Icon(Icons.person_outlined),
@@ -206,13 +191,7 @@ class DashboardScreen extends StatelessWidget {
               const SizedBox(height: 16),
               _TodayMacroCard(userId: user.id),
               const SizedBox(height: 16),
-              _RecentTimeline(
-                userId: user.id,
-                onTap: (kind) {
-                  final homeState = context.findAncestorStateOfType<_HomeScreenState>();
-                  homeState?.jumpToRecords(kind);
-                },
-              ),
+              _RecentTimeline(userId: user.id),
             ],
           ),
         ),
@@ -655,9 +634,7 @@ class _DailyBriefCardState extends State<_DailyBriefCard> {
 
 class _RecentTimeline extends StatefulWidget {
   final int userId;
-  /// kind: 0=food 1=exercise 2=weight
-  final void Function(int kind) onTap;
-  const _RecentTimeline({required this.userId, required this.onTap});
+  const _RecentTimeline({required this.userId});
   @override
   State<_RecentTimeline> createState() => _RecentTimelineState();
 }
@@ -818,7 +795,6 @@ class _RecentTimelineState extends State<_RecentTimeline> {
                       style: TextStyle(color: scheme.onSurfaceVariant)),
                   trailing: Text(_relative(l10n, item.at),
                       style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
-                  onTap: () => widget.onTap(item.kind),
                 ),
           ],
         ),

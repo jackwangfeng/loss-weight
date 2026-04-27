@@ -203,6 +203,112 @@ test.describe.serial('后端 API 端到端流程', () => {
     expect(bad.status()).toBe(400);
   });
 
+  // ----- AI tool calling — log_weight -----
+  // Coach 自己识别"我今天体重 X 公斤"调 log_weight 工具：
+  //   1. SSE 里推 action 帧（前端渲染卡片用）
+  //   2. WeightRecord 真落库
+  //   3. assistant 消息带 action_kind/action_payload 持久化（reload 还能渲染）
+  //   4. DELETE /weight/record/:id 模拟撤销
+  let toolThreadId = 0;
+  let toolRecordId = 0;
+  let toolAssistantMsgId = 0;
+
+  test('AI 工具 — 起一个干净 thread', async ({ request }) => {
+    const r = await request.post(`${API}/v1/ai/chat/thread?user_id=${userId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { title: 'log_weight tool e2e' },
+    });
+    expect(r.ok()).toBeTruthy();
+    toolThreadId = (await r.json()).id;
+    expect(toolThreadId).toBeGreaterThan(0);
+  });
+
+  test('AI 工具 — 流式聊天触发 log_weight，SSE 含 action 帧', async ({ request }) => {
+    const r = await request.post(`${API}/v1/ai/chat/stream`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'text/event-stream',
+      },
+      data: {
+        user_id: userId,
+        thread_id: String(toolThreadId),
+        locale: 'zh',
+        messages: [{ role: 'user', content: '我今天早上体重 75 公斤' }],
+      },
+      timeout: 30000,
+    });
+    expect(r.ok()).toBeTruthy();
+
+    // SSE: 多个 "data: {json}\n\n" 帧。一次性读完，挨个 JSON.parse。
+    const text = await r.text();
+    const frames = text
+      .split('\n')
+      .filter((l) => l.startsWith('data: '))
+      .map((l) => l.slice(6))
+      .filter(Boolean)
+      .map((s) => {
+        try { return JSON.parse(s); } catch { return null; }
+      })
+      .filter(Boolean);
+
+    const action = frames.find((f) => f.action === 'log_weight');
+    expect(action, 'expected an action:log_weight frame in SSE').toBeTruthy();
+    expect(action.action_payload).toBeTruthy();
+
+    const payload = JSON.parse(action.action_payload);
+    expect(payload.weight_kg).toBeCloseTo(75, 0);
+    expect(payload.record_id).toBeGreaterThan(0);
+    toolRecordId = payload.record_id;
+
+    // done 帧应该带最终 assistant message_id（用来在 history 里拉持久化字段）
+    const done = frames.find((f) => f.done === true);
+    expect(done, 'expected a done frame').toBeTruthy();
+    if (done.message_id) toolAssistantMsgId = done.message_id;
+  });
+
+  test('AI 工具 — WeightRecord 真落库', async ({ request }) => {
+    const r = await request.get(`${API}/v1/weight/records?user_id=${userId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(r.ok()).toBeTruthy();
+    const records = (await r.json()).records || [];
+    const hit = records.find((rec) => rec.id === toolRecordId);
+    expect(hit, `record ${toolRecordId} should exist`).toBeTruthy();
+    expect(hit.weight).toBeCloseTo(75, 0);
+  });
+
+  test('AI 工具 — assistant 消息持久化 action_kind / action_payload', async ({ request }) => {
+    const r = await request.get(
+      `${API}/v1/ai/chat/history?user_id=${userId}&thread_id=${toolThreadId}&since_id=0`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    expect(r.ok()).toBeTruthy();
+    const messages = (await r.json()).messages || [];
+    const tagged = messages.find(
+      (m) => m.role === 'assistant' && m.action_kind === 'log_weight',
+    );
+    expect(tagged, 'reload 后应该还能在历史里看到 action_kind').toBeTruthy();
+    expect(tagged.action_payload).toContain('"record_id"');
+
+    // 解出来的 record_id 应该和 SSE 里那个一致
+    const parsed = JSON.parse(tagged.action_payload);
+    expect(parsed.record_id).toBe(toolRecordId);
+  });
+
+  test('AI 工具 — 撤销：DELETE 后 record 消失', async ({ request }) => {
+    const del = await request.delete(`${API}/v1/weight/record/${toolRecordId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(del.ok()).toBeTruthy();
+
+    const list = await request.get(`${API}/v1/weight/records?user_id=${userId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(list.ok()).toBeTruthy();
+    const records = (await list.json()).records || [];
+    expect(records.find((rec) => rec.id === toolRecordId)).toBeUndefined();
+  });
+
   test('退出登录', async ({ request }) => {
     const r = await request.post(`${API}/v1/auth/logout`, {
       headers: { Authorization: `Bearer ${token}` },

@@ -18,10 +18,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get navToday => '今日';
 
   @override
-  String get navLog => '记录';
-
-  @override
-  String get navCoach => '教练';
+  String get navAssistant => '助手';
 
   @override
   String get navMe => '我的';
@@ -824,4 +821,38 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get quickSetupAiFailed => 'AI 没看懂，再试一次或手动填。';
+
+  @override
+  String get actionCardLoggedWeight => '已记录体重';
+
+  @override
+  String actionCardLoggedWeightValue(String weight) {
+    return '$weight kg';
+  }
+
+  @override
+  String get actionCardLoggedFood => '已记录饮食';
+
+  @override
+  String actionCardLoggedFoodValue(String name, String calories) {
+    return '$name · $calories kcal';
+  }
+
+  @override
+  String get actionCardLoggedTraining => '已记录训练';
+
+  @override
+  String actionCardLoggedTrainingValue(
+      String type, String minutes, String calories) {
+    return '$type · $minutes 分钟 · $calories kcal';
+  }
+
+  @override
+  String get actionCardUndo => '撤销';
+
+  @override
+  String get actionCardUndone => '已撤销';
+
+  @override
+  String get actionCardUndoFailed => '撤销失败，请重试。';
 }

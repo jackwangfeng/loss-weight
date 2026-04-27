@@ -116,17 +116,11 @@ abstract class AppLocalizations {
   /// **'Today'**
   String get navToday;
 
-  /// No description provided for @navLog.
+  /// No description provided for @navAssistant.
   ///
   /// In en, this message translates to:
-  /// **'Log'**
-  String get navLog;
-
-  /// No description provided for @navCoach.
-  ///
-  /// In en, this message translates to:
-  /// **'Coach'**
-  String get navCoach;
+  /// **'Assistant'**
+  String get navAssistant;
 
   /// No description provided for @navMe.
   ///
@@ -1567,6 +1561,61 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'AI didn\'t understand. Try again or fill manually.'**
   String get quickSetupAiFailed;
+
+  /// No description provided for @actionCardLoggedWeight.
+  ///
+  /// In en, this message translates to:
+  /// **'Weight logged'**
+  String get actionCardLoggedWeight;
+
+  /// No description provided for @actionCardLoggedWeightValue.
+  ///
+  /// In en, this message translates to:
+  /// **'{weight} kg'**
+  String actionCardLoggedWeightValue(String weight);
+
+  /// No description provided for @actionCardLoggedFood.
+  ///
+  /// In en, this message translates to:
+  /// **'Food logged'**
+  String get actionCardLoggedFood;
+
+  /// No description provided for @actionCardLoggedFoodValue.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} · {calories} kcal'**
+  String actionCardLoggedFoodValue(String name, String calories);
+
+  /// No description provided for @actionCardLoggedTraining.
+  ///
+  /// In en, this message translates to:
+  /// **'Training logged'**
+  String get actionCardLoggedTraining;
+
+  /// No description provided for @actionCardLoggedTrainingValue.
+  ///
+  /// In en, this message translates to:
+  /// **'{type} · {minutes} min · {calories} kcal'**
+  String actionCardLoggedTrainingValue(
+      String type, String minutes, String calories);
+
+  /// No description provided for @actionCardUndo.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo'**
+  String get actionCardUndo;
+
+  /// No description provided for @actionCardUndone.
+  ///
+  /// In en, this message translates to:
+  /// **'Undone'**
+  String get actionCardUndone;
+
+  /// No description provided for @actionCardUndoFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t undo, try again.'**
+  String get actionCardUndoFailed;
 }
 
 class _AppLocalizationsDelegate

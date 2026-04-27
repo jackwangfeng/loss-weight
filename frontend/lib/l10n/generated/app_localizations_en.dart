@@ -18,10 +18,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get navToday => 'Today';
 
   @override
-  String get navLog => 'Log';
-
-  @override
-  String get navCoach => 'Coach';
+  String get navAssistant => 'Assistant';
 
   @override
   String get navMe => 'Me';
@@ -840,4 +837,38 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get quickSetupAiFailed =>
       'AI didn\'t understand. Try again or fill manually.';
+
+  @override
+  String get actionCardLoggedWeight => 'Weight logged';
+
+  @override
+  String actionCardLoggedWeightValue(String weight) {
+    return '$weight kg';
+  }
+
+  @override
+  String get actionCardLoggedFood => 'Food logged';
+
+  @override
+  String actionCardLoggedFoodValue(String name, String calories) {
+    return '$name · $calories kcal';
+  }
+
+  @override
+  String get actionCardLoggedTraining => 'Training logged';
+
+  @override
+  String actionCardLoggedTrainingValue(
+      String type, String minutes, String calories) {
+    return '$type · $minutes min · $calories kcal';
+  }
+
+  @override
+  String get actionCardUndo => 'Undo';
+
+  @override
+  String get actionCardUndone => 'Undone';
+
+  @override
+  String get actionCardUndoFailed => 'Couldn\'t undo, try again.';
 }

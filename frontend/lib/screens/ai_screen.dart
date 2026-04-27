@@ -8,8 +8,12 @@ import '../providers/auth_provider.dart';
 import '../providers/locale_provider.dart';
 import '../providers/user_provider.dart';
 import '../services/ai_service.dart';
+import '../services/weight_service.dart';
+import '../services/food_service.dart';
+import '../services/exercise_service.dart';
 import '../models/ai_chat.dart';
 import '../widgets/voice_input_button.dart';
+import 'dart:convert';
 
 class AIScreen extends StatefulWidget {
   const AIScreen({Key? key}) : super(key: key);
@@ -20,8 +24,17 @@ class AIScreen extends StatefulWidget {
 
 class AIScreenState extends State<AIScreen> {
   final AIService _aiService = AIService();
+  final WeightService _weightService = WeightService();
+  final FoodService _foodService = FoodService();
+  final ExerciseService _exerciseService = ExerciseService();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+
+  // Per-message UI state for action cards. Keyed by message id (or streamingId
+  // before the stream resolves). Lives only in memory — by design the card
+  // can be undone "in the moment"; reloads still render but with a fresh state.
+  final Set<int> _undoneActionIds = {};
+  final Set<int> _undoingActionIds = {};
 
   List<AIChatMessage> _messages = [];
   AIChatThread? _currentThread;
@@ -333,6 +346,34 @@ class AIScreenState extends State<AIScreen> {
 
     final buf = StringBuffer();
     var firstDelta = true;
+    String? capturedActionKind;
+    String? capturedActionPayload;
+    void ensureBubble() {
+      if (firstDelta) {
+        _isTyping = false;
+        firstDelta = false;
+        _messages.add(AIChatMessage(
+          id: streamingId,
+          userId: userId,
+          role: 'assistant',
+          content: buf.toString(),
+          threadId: _currentThread!.id.toString(),
+          createdAt: DateTime.now(),
+          actionKind: capturedActionKind,
+          actionPayload: capturedActionPayload,
+        ));
+      } else {
+        final idx = _messages.indexWhere((m) => m.id == streamingId);
+        if (idx >= 0) {
+          _messages[idx] = _messages[idx].copyWith(
+            content: buf.toString(),
+            actionKind: capturedActionKind,
+            actionPayload: capturedActionPayload,
+          );
+        }
+      }
+    }
+
     try {
       await for (final chunk in _aiService.chatStream(
         userId: userId,
@@ -344,37 +385,21 @@ class AIScreenState extends State<AIScreen> {
         if (err != null && err.isNotEmpty) {
           throw Exception(err);
         }
+        final action = chunk['action'] as String?;
+        if (action != null && action.isNotEmpty) {
+          capturedActionKind = action;
+          capturedActionPayload = chunk['action_payload'] as String?;
+          if (!mounted) return;
+          // Action 帧也要触发气泡显示（model 可能没产生任何文本，
+          // 比如 log_weight 后直接结束）。content 留空，渲染时只显示卡片。
+          setState(ensureBubble);
+          _scrollToBottom();
+        }
         final delta = chunk['delta'] as String?;
         if (delta != null && delta.isNotEmpty) {
           buf.write(delta);
           if (!mounted) return;
-          setState(() {
-            if (firstDelta) {
-              _isTyping = false;
-              firstDelta = false;
-              // Now that we actually have content, add the assistant bubble.
-              _messages.add(AIChatMessage(
-                id: streamingId,
-                userId: userId,
-                role: 'assistant',
-                content: buf.toString(),
-                threadId: _currentThread!.id.toString(),
-                createdAt: DateTime.now(),
-              ));
-            } else {
-              final idx = _messages.indexWhere((m) => m.id == streamingId);
-              if (idx >= 0) {
-                _messages[idx] = AIChatMessage(
-                  id: streamingId,
-                  userId: userId,
-                  role: 'assistant',
-                  content: buf.toString(),
-                  threadId: _currentThread!.id.toString(),
-                  createdAt: _messages[idx].createdAt,
-                );
-              }
-            }
-          });
+          setState(ensureBubble);
           _scrollToBottom();
         }
         final done = chunk['done'] == true;
@@ -385,16 +410,14 @@ class AIScreenState extends State<AIScreen> {
             _isTyping = false;
             final idx = _messages.indexWhere((m) => m.id == streamingId);
             if (idx >= 0) {
-              _messages[idx] = AIChatMessage(
-                id: mid,
-                userId: userId,
-                role: 'assistant',
-                content: buf.toString(),
-                threadId: _currentThread!.id.toString(),
-                createdAt: _messages[idx].createdAt,
-              );
+              _messages[idx] = _messages[idx].copyWith(id: mid);
             }
           });
+          // Action 触发后通知 dashboard / records 刷新数据。
+          final ck = capturedActionKind;
+          if (ck != null) {
+            _onActionCompleted(ck);
+          }
           _scrollToBottom();
           break;
         }
@@ -410,6 +433,54 @@ class AIScreenState extends State<AIScreen> {
           SnackBar(content: Text(l10n.errorSendFailed(e.toString()))),
         );
       }
+    }
+  }
+
+  // Hook for refreshing dependent dashboards (today's totals, weight trend).
+  // MVP: no-op. Adding a global refresh signal is a follow-up — for now the
+  // user navigates to the Today tab manually and that screen reloads on focus.
+  void _onActionCompleted(String kind) {
+    // intentionally empty
+  }
+
+  Future<void> _undoAction(AIChatMessage msg) async {
+    final l10n = AppLocalizations.of(context);
+    if (msg.actionKind == null || msg.actionPayload == null) return;
+    Map<String, dynamic> payload;
+    try {
+      payload = json.decode(msg.actionPayload!) as Map<String, dynamic>;
+    } catch (_) {
+      return;
+    }
+    final recordId = (payload['record_id'] as num?)?.toInt();
+    if (recordId == null) return;
+
+    setState(() => _undoingActionIds.add(msg.id));
+    try {
+      switch (msg.actionKind) {
+        case 'log_weight':
+          await _weightService.deleteRecord(recordId);
+          break;
+        case 'log_food':
+          await _foodService.deleteRecord(recordId);
+          break;
+        case 'log_training':
+          await _exerciseService.deleteRecord(recordId);
+          break;
+        default:
+          return;
+      }
+      if (!mounted) return;
+      setState(() {
+        _undoingActionIds.remove(msg.id);
+        _undoneActionIds.add(msg.id);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _undoingActionIds.remove(msg.id));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.actionCardUndoFailed)),
+      );
     }
   }
 
@@ -585,6 +656,10 @@ class AIScreenState extends State<AIScreen> {
     final scheme = Theme.of(context).colorScheme;
     final bubbleColor = isUser ? scheme.primary : scheme.surfaceContainerHighest;
     final textColor = isUser ? scheme.onPrimary : scheme.onSurface;
+    final hasAction = !isUser && (message.actionKind?.isNotEmpty ?? false);
+    // Skip the empty assistant bubble when the model only invoked a tool and
+    // produced no text — the action card is the entire reply in that case.
+    final showBubble = isUser || message.content.trim().isNotEmpty;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -600,40 +675,152 @@ class AIScreenState extends State<AIScreen> {
             const SizedBox(width: 12),
           ],
           Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: bubbleColor,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: isUser
-                  ? Text(
-                      message.content,
-                      style: TextStyle(color: textColor, fontSize: 15),
-                    )
-                  : MarkdownBody(
-                      data: message.content,
-                      softLineBreak: true,
-                      styleSheet: MarkdownStyleSheet(
-                        p: TextStyle(color: textColor, fontSize: 15, height: 1.5),
-                        strong: TextStyle(color: textColor, fontWeight: FontWeight.w600),
-                        listBullet: TextStyle(color: textColor, fontSize: 15),
-                        code: TextStyle(
-                          color: scheme.primary,
-                          backgroundColor: scheme.surfaceContainer,
-                          fontFamily: 'monospace',
-                          fontSize: 13,
-                        ),
-                        codeblockDecoration: BoxDecoration(
-                          color: scheme.surfaceContainer,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        blockSpacing: 6,
-                      ),
+            child: Column(
+              crossAxisAlignment:
+                  isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              children: [
+                if (showBubble)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: bubbleColor,
+                      borderRadius: BorderRadius.circular(16),
                     ),
+                    child: isUser
+                        ? Text(
+                            message.content,
+                            style: TextStyle(color: textColor, fontSize: 15),
+                          )
+                        : MarkdownBody(
+                            data: message.content,
+                            softLineBreak: true,
+                            styleSheet: MarkdownStyleSheet(
+                              p: TextStyle(color: textColor, fontSize: 15, height: 1.5),
+                              strong: TextStyle(color: textColor, fontWeight: FontWeight.w600),
+                              listBullet: TextStyle(color: textColor, fontSize: 15),
+                              code: TextStyle(
+                                color: scheme.primary,
+                                backgroundColor: scheme.surfaceContainer,
+                                fontFamily: 'monospace',
+                                fontSize: 13,
+                              ),
+                              codeblockDecoration: BoxDecoration(
+                                color: scheme.surfaceContainer,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              blockSpacing: 6,
+                            ),
+                          ),
+                  ),
+                if (hasAction) ...[
+                  if (showBubble) const SizedBox(height: 8),
+                  _buildActionCard(message),
+                ],
+              ],
             ),
           ),
           if (isUser) const SizedBox(width: 12),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionCard(AIChatMessage message) {
+    final l10n = AppLocalizations.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final undone = _undoneActionIds.contains(message.id);
+    final undoing = _undoingActionIds.contains(message.id);
+
+    Map<String, dynamic> payload = const {};
+    try {
+      payload = json.decode(message.actionPayload ?? '{}') as Map<String, dynamic>;
+    } catch (_) {}
+
+    String title;
+    String value;
+    IconData icon;
+    switch (message.actionKind) {
+      case 'log_weight':
+        final w = (payload['weight_kg'] as num?)?.toStringAsFixed(1) ?? '?';
+        title = l10n.actionCardLoggedWeight;
+        value = l10n.actionCardLoggedWeightValue(w);
+        icon = Icons.monitor_weight_outlined;
+        break;
+      case 'log_food':
+        final name = (payload['food_name'] as String?) ?? '?';
+        final cal = (payload['calories'] as num?)?.toStringAsFixed(0) ?? '?';
+        title = l10n.actionCardLoggedFood;
+        value = l10n.actionCardLoggedFoodValue(name, cal);
+        icon = Icons.restaurant;
+        break;
+      case 'log_training':
+        final type = (payload['type'] as String?) ?? '?';
+        final mins = (payload['duration_min'] as num?)?.toStringAsFixed(0) ?? '?';
+        final cal = (payload['calories_burned'] as num?)?.toStringAsFixed(0) ?? '?';
+        title = l10n.actionCardLoggedTraining;
+        value = l10n.actionCardLoggedTrainingValue(type, mins, cal);
+        icon = Icons.fitness_center;
+        break;
+      default:
+        return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: undone ? scheme.outlineVariant : scheme.primary.withValues(alpha: 0.4),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon,
+              size: 20,
+              color: undone ? scheme.onSurfaceVariant : scheme.primary),
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                undone ? l10n.actionCardUndone : title,
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: TextStyle(
+                  color: scheme.onSurface,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  decoration: undone ? TextDecoration.lineThrough : null,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 16),
+          if (!undone)
+            TextButton(
+              onPressed: undoing ? null : () => _undoAction(message),
+              style: TextButton.styleFrom(
+                minimumSize: const Size(0, 32),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: undoing
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(l10n.actionCardUndo),
+            ),
         ],
       ),
     );
