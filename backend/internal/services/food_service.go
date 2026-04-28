@@ -82,7 +82,9 @@ func (s *FoodService) GetRecordsByUser(userID uint, startDate, endDate time.Time
 		query = query.Where("eaten_at >= ?", startDate)
 	}
 	if !endDate.IsZero() {
-		query = query.Where("eaten_at <= ?", endDate)
+		// Half-open: endDate is exclusive. Handler converts the inclusive
+		// client-supplied YYYY-MM-DD into next-day midnight (in client tz).
+		query = query.Where("eaten_at < ?", endDate)
 	}
 
 	if err := query.Order("eaten_at DESC").Find(&records).Error; err != nil {
@@ -151,8 +153,8 @@ func (s *FoodService) DeleteRecord(id uint) error {
 	return nil
 }
 
-func (s *FoodService) GetDailySummary(userID uint, date time.Time) (map[string]interface{}, error) {
-	startOfDay := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
+func (s *FoodService) GetDailySummary(userID uint, date time.Time, loc *time.Location) (map[string]interface{}, error) {
+	startOfDay := StartOfDay(date, loc)
 	endOfDay := startOfDay.Add(24 * time.Hour)
 
 	var records []models.FoodRecord

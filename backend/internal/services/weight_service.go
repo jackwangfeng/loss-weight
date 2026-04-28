@@ -73,7 +73,9 @@ func (s *WeightService) GetRecordsByUser(userID uint, startDate, endDate time.Ti
 		query = query.Where("measured_at >= ?", startDate)
 	}
 	if !endDate.IsZero() {
-		query = query.Where("measured_at <= ?", endDate)
+		// Half-open: endDate is exclusive. Handler converts the inclusive
+		// client-supplied YYYY-MM-DD into next-day midnight (in client tz).
+		query = query.Where("measured_at < ?", endDate)
 	}
 
 	if err := query.Order("measured_at DESC").Find(&records).Error; err != nil {

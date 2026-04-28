@@ -200,6 +200,10 @@ type EstimateExerciseResponse struct {
 type DailyBriefRequest struct {
 	UserID uint   `json:"user_id" binding:"required"`
 	Locale string `json:"locale"`
+	// Tz is an IANA timezone name (e.g. "Asia/Shanghai") used to draw the
+	// "today" boundary. Empty falls back to UTC, which is wrong for most
+	// users — clients should always send it.
+	Tz string `json:"tz"`
 }
 
 type DailyBriefResponse struct {
@@ -246,6 +250,9 @@ type ChatRequest struct {
 	Messages []ChatMessage `json:"messages" binding:"required"`
 	ThreadID string        `json:"thread_id"`
 	Locale   string        `json:"locale"`
+	// Tz is an IANA timezone name; used so the system prompt's "today"
+	// snapshot lines up with the user's local calendar day.
+	Tz string `json:"tz"`
 }
 
 type ChatResponse struct {
@@ -939,14 +946,19 @@ func deriveMacroTargetsBackend(profile *models.UserProfile) macroTargets {
 
 // GetDailyBrief: 组合 profile + 今日饮食 + 今日运动，让 LLM 写一句话今日简报。
 // 这是首页卡片的数据源——让 AI "在场"。
-func (s *AIService) GetDailyBrief(userID uint, locale string) (*DailyBriefResponse, error) {
+// `tz` 是 IANA 时区名（"Asia/Shanghai" 等），决定"今天"的边界——空字符串
+// 退回 UTC 是为了向后兼容老客户端，但会算错日界，新客户端必须传。
+func (s *AIService) GetDailyBrief(userID uint, locale, tz string) (*DailyBriefResponse, error) {
+	loc := ResolveLocation(tz)
+	now := time.Now().In(loc)
+
 	// 1. 拉数据
 	profile := s.loadUserProfile(userID)
 	targets := deriveMacroTargetsBackend(profile)
 	target := targets.calorie
 
 	// 今日饮食
-	foods := s.loadTodayFood(userID)
+	foods := s.loadTodayFood(userID, loc)
 	var eaten, eatenProtein, eatenCarbs, eatenFat float32
 	for _, f := range foods {
 		eaten += f.calories
@@ -956,8 +968,7 @@ func (s *AIService) GetDailyBrief(userID uint, locale string) (*DailyBriefRespon
 	}
 
 	// 今日运动
-	now := time.Now()
-	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	start := StartOfDay(now, loc)
 	end := start.Add(24 * time.Hour)
 	var exercises []models.ExerciseRecord
 	s.db.Where("user_id = ? AND exercised_at >= ? AND exercised_at < ?",
@@ -1169,7 +1180,7 @@ func (s *AIService) Chat(req *ChatRequest) (*ChatResponse, error) {
 	}
 
 	// [3] 组装完整上下文
-	messages, err := s.assembleChatMessages(req.UserID, req.ThreadID, last.Content, languageName(req.Locale))
+	messages, err := s.assembleChatMessages(req.UserID, req.ThreadID, last.Content, languageName(req.Locale), ResolveLocation(req.Tz))
 	if err != nil {
 		s.logger.Error("assemble chat context failed", zap.Error(err))
 		return nil, err
@@ -1215,9 +1226,11 @@ func (s *AIService) saveAssistantReply(userID uint, threadID, content string) (*
 // assembleChatMessages: assembles the layered memory context into the
 // messages array sent to the LLM. `lang` is the target language name
 // (English / Simplified Chinese / ...) that the system prompt forces.
-func (s *AIService) assembleChatMessages(userID uint, threadID, query, lang string) ([]ChatMessage, error) {
+// `loc` decides the day boundary for the "eaten today / yesterday at a
+// glance" lines — pass the client's IANA tz, or time.UTC for back-compat.
+func (s *AIService) assembleChatMessages(userID uint, threadID, query, lang string, loc *time.Location) ([]ChatMessage, error) {
 	messages := []ChatMessage{
-		{Role: "system", Content: s.buildSystemPrompt(userID, threadID, lang)},
+		{Role: "system", Content: s.buildSystemPrompt(userID, threadID, lang, loc)},
 	}
 
 	// 滑窗（含刚插入的 user 消息，要剔除——我们自己会把 query 放在末尾）
@@ -1607,7 +1620,7 @@ func (s *AIService) ChatStream(ctx context.Context, req *ChatRequest) (<-chan St
 		return out, nil
 	}
 
-	messages, err := s.assembleChatMessages(req.UserID, req.ThreadID, last.Content, languageName(req.Locale))
+	messages, err := s.assembleChatMessages(req.UserID, req.ThreadID, last.Content, languageName(req.Locale), ResolveLocation(req.Tz))
 	if err != nil {
 		return nil, err
 	}

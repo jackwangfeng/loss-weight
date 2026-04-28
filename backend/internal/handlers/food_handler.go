@@ -54,15 +54,22 @@ func (h *FoodHandler) GetRecords(c *gin.Context) {
 		return
 	}
 
+	loc := services.ResolveLocation(c.Query("tz"))
 	var startDate, endDate time.Time
 	startDateStr := c.Query("start_date")
 	endDateStr := c.Query("end_date")
 
 	if startDateStr != "" {
-		startDate, _ = time.Parse("2006-01-02", startDateStr)
+		startDate, _ = time.ParseInLocation("2006-01-02", startDateStr, loc)
 	}
 	if endDateStr != "" {
-		endDate, _ = time.Parse("2006-01-02", endDateStr)
+		// end_date is inclusive in client's local calendar — bump to next
+		// midnight (in client tz) so the service does a half-open
+		// [start, end) range. Service layer treats endDate as exclusive
+		// when non-zero (existing convention preserved).
+		if d, err := time.ParseInLocation("2006-01-02", endDateStr, loc); err == nil {
+			endDate = d.AddDate(0, 0, 1)
+		}
 	}
 
 	records, err := h.service.GetRecordsByUser(uint(userID), startDate, endDate)
@@ -155,15 +162,16 @@ func (h *FoodHandler) GetDailySummary(c *gin.Context) {
 		return
 	}
 
+	loc := services.ResolveLocation(c.Query("tz"))
 	dateStr := c.Query("date")
 	var date time.Time
 	if dateStr != "" {
-		date, _ = time.Parse("2006-01-02", dateStr)
+		date, _ = time.ParseInLocation("2006-01-02", dateStr, loc)
 	} else {
-		date = time.Now()
+		date = time.Now().In(loc)
 	}
 
-	summary, err := h.service.GetDailySummary(uint(userID), date)
+	summary, err := h.service.GetDailySummary(uint(userID), date, loc)
 	if err != nil {
 		h.logger.Error("failed to get daily summary", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取每日总结失败"})

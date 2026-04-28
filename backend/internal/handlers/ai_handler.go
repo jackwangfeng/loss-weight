@@ -191,7 +191,7 @@ func (h *AIHandler) GetDailyBrief(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	result, err := h.service.GetDailyBrief(req.UserID, req.Locale)
+	result, err := h.service.GetDailyBrief(req.UserID, req.Locale, req.Tz)
 	if err != nil {
 		h.logger.Error("daily brief failed", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成简报失败"})

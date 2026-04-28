@@ -41,14 +41,16 @@ func (h *ExerciseHandler) GetRecords(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的 user_id"})
 		return
 	}
+	loc := services.ResolveLocation(c.Query("tz"))
 	var startDate, endDate time.Time
 	if s := c.Query("start_date"); s != "" {
-		startDate, _ = time.Parse("2006-01-02", s)
+		startDate, _ = time.ParseInLocation("2006-01-02", s, loc)
 	}
 	if s := c.Query("end_date"); s != "" {
-		endDate, _ = time.Parse("2006-01-02", s)
-		if !endDate.IsZero() {
-			endDate = endDate.Add(24 * time.Hour)
+		// Inclusive end-date in client tz → next-day midnight for half-open
+		// query at the service layer.
+		if d, err := time.ParseInLocation("2006-01-02", s, loc); err == nil {
+			endDate = d.AddDate(0, 0, 1)
 		}
 	}
 	records, err := h.service.GetRecordsByUser(uint(userID), startDate, endDate)
@@ -112,13 +114,14 @@ func (h *ExerciseHandler) GetDailySummary(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的 user_id"})
 		return
 	}
-	date := time.Now()
+	loc := services.ResolveLocation(c.Query("tz"))
+	date := time.Now().In(loc)
 	if s := c.Query("date"); s != "" {
-		if d, err := time.Parse("2006-01-02", s); err == nil {
+		if d, err := time.ParseInLocation("2006-01-02", s, loc); err == nil {
 			date = d
 		}
 	}
-	summary, err := h.service.GetDailySummary(uint(userID), date)
+	summary, err := h.service.GetDailySummary(uint(userID), date, loc)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取汇总失败"})
 		return

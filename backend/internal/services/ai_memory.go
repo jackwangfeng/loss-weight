@@ -200,7 +200,7 @@ func (s *AIService) searchRelevantMessages(
 //   2. ## User facts (LLM-extracted structured prefs)
 //   3. ## Prior conversation summary (explicitly marked as possibly stale)
 //   4. Retrieved messages + recent window (appended outside this fn)
-func (s *AIService) buildSystemPrompt(userID uint, threadID, lang string) string {
+func (s *AIService) buildSystemPrompt(userID uint, threadID, lang string, loc *time.Location) string {
 	var sb strings.Builder
 	sb.WriteString("You are RecompDaily, a direct, data-driven AI recomp coach for men who lift. ")
 	sb.WriteString("Give concrete, actionable guidance grounded in the user's actual numbers below. ")
@@ -251,7 +251,7 @@ func (s *AIService) buildSystemPrompt(userID uint, threadID, lang string) string
 		sb.WriteString(fmt.Sprintf("- Daily targets: %.0f kcal, %.0f g protein, %.0f g carbs, %.0f g fat\n",
 			targets.calorie, targets.protein, targets.carbs, targets.fat))
 
-		if foods := s.loadTodayFood(userID); len(foods) > 0 {
+		if foods := s.loadTodayFood(userID, loc); len(foods) > 0 {
 			var totalCal, totalP, totalC, totalF float32
 			parts := make([]string, 0, len(foods))
 			for _, f := range foods {
@@ -266,7 +266,7 @@ func (s *AIService) buildSystemPrompt(userID uint, threadID, lang string) string
 				totalCal, totalP, totalC, totalF))
 		}
 
-		if exs := s.loadTodayExercise(userID); len(exs) > 0 {
+		if exs := s.loadTodayExercise(userID, loc); len(exs) > 0 {
 			var totalBurned float32
 			parts := make([]string, 0, len(exs))
 			for _, e := range exs {
@@ -280,7 +280,7 @@ func (s *AIService) buildSystemPrompt(userID uint, threadID, lang string) string
 
 		// Yesterday at a glance — enables day-over-day context ("你昨天
 		// 蛋白质只吃到 95 g") without dumping every record into the prompt.
-		if y := s.loadDayAggregate(userID, 1); y.hasAny() {
+		if y := s.loadDayAggregate(userID, 1, loc); y.hasAny() {
 			sb.WriteString("- Yesterday: " + y.summary() + "\n")
 		}
 
@@ -354,9 +354,8 @@ type foodLite struct {
 	fat      float32
 }
 
-func (s *AIService) loadTodayFood(userID uint) []foodLite {
-	now := time.Now()
-	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+func (s *AIService) loadTodayFood(userID uint, loc *time.Location) []foodLite {
+	start := StartOfDay(time.Now(), loc)
 	end := start.Add(24 * time.Hour)
 	var records []models.FoodRecord
 	if err := s.db.Where("user_id = ? AND eaten_at >= ? AND eaten_at < ?",
@@ -382,9 +381,8 @@ type exerciseLite struct {
 	caloriesBurned float32
 }
 
-func (s *AIService) loadTodayExercise(userID uint) []exerciseLite {
-	now := time.Now()
-	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+func (s *AIService) loadTodayExercise(userID uint, loc *time.Location) []exerciseLite {
+	start := StartOfDay(time.Now(), loc)
 	end := start.Add(24 * time.Hour)
 	var records []models.ExerciseRecord
 	if err := s.db.Where("user_id = ? AND exercised_at >= ? AND exercised_at < ?",
@@ -436,10 +434,8 @@ func (d dayAggregate) summary() string {
 
 // loadDayAggregate: daysAgo=0 today, 1 yesterday, ... Used for terse day-over-
 // day context without piping every per-record row through the prompt.
-func (s *AIService) loadDayAggregate(userID uint, daysAgo int) dayAggregate {
-	now := time.Now()
-	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).
-		AddDate(0, 0, -daysAgo)
+func (s *AIService) loadDayAggregate(userID uint, daysAgo int, loc *time.Location) dayAggregate {
+	start := StartOfDay(time.Now(), loc).AddDate(0, 0, -daysAgo)
 	end := start.Add(24 * time.Hour)
 
 	var agg dayAggregate

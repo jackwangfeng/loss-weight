@@ -66,7 +66,9 @@ func (s *ExerciseService) GetRecordsByUser(userID uint, startDate, endDate time.
 		q = q.Where("exercised_at >= ?", startDate)
 	}
 	if !endDate.IsZero() {
-		q = q.Where("exercised_at <= ?", endDate)
+		// Half-open: endDate is exclusive. Handler converts the inclusive
+		// client-supplied YYYY-MM-DD into next-day midnight (in client tz).
+		q = q.Where("exercised_at < ?", endDate)
 	}
 	if err := q.Order("exercised_at DESC").Find(&records).Error; err != nil {
 		return nil, err
@@ -106,8 +108,8 @@ func (s *ExerciseService) DeleteRecord(id uint) error {
 	return s.db.Delete(&models.ExerciseRecord{}, id).Error
 }
 
-func (s *ExerciseService) GetDailySummary(userID uint, date time.Time) (map[string]interface{}, error) {
-	start := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
+func (s *ExerciseService) GetDailySummary(userID uint, date time.Time, loc *time.Location) (map[string]interface{}, error) {
+	start := StartOfDay(date, loc)
 	end := start.Add(24 * time.Hour)
 	var records []models.ExerciseRecord
 	if err := s.db.Where("user_id = ? AND exercised_at >= ? AND exercised_at < ?", userID, start, end).
