@@ -40,6 +40,7 @@ iOS submission plan: `APPSTORE_CHECKLIST.md`.
 | JWT format | `backend/internal/auth/token.go:TokenIssuer` | HS256, `cfg.SecretKey`, claims `{uid, iat, exp}`, TTL `cfg.JWTExpireDays` days |
 | `UserAccount` identifiers | `models/auth.go` | `Phone / Email / GoogleSub` all `*string` uniqueIndex nullable. At least one must be set for an account to exist. |
 | Default thread title | `"New chat"` | `ai_service.go:maybeAutoTitleThread` treats `""`, `"New chat"`, or legacy `"新对话"` as auto-title triggers |
+| Daily-boundary timezone | `backend/internal/services/timezone.go` (`ResolveLocation` + `StartOfDay`) + every daily/range endpoint + `frontend/lib/utils/timezone.dart` | client sends IANA `tz` (e.g. `Asia/Shanghai`) on `/v1/{food,exercise}/daily-summary`, `/v1/{food,exercise,weight}/records` (query), `/v1/ai/{daily-brief,chat,chat/stream}` (body). Backend computes `StartOfDay(t, ResolveLocation(tz))`. Empty/unknown tz → UTC. Range query `endDate` semantics is half-open (`<`); handler bumps inclusive client `end_date` to next-day midnight in client tz. |
 
 ---
 
