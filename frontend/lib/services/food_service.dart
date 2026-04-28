@@ -1,4 +1,5 @@
 import '../models/food_record.dart';
+import '../utils/timezone.dart';
 import 'api_service.dart';
 
 class FoodService {
@@ -54,6 +55,8 @@ class FoodService {
     if (endDate != null) {
       queryParameters['end_date'] = _formatDate(endDate);
     }
+    final tz = appTimezone();
+    if (tz != null) queryParameters['tz'] = tz;
 
     final response = await _apiService.get(
       '/food/records',
@@ -76,6 +79,8 @@ class FoodService {
     if (date != null) {
       queryParameters['date'] = _formatDate(date);
     }
+    final tz = appTimezone();
+    if (tz != null) queryParameters['tz'] = tz;
 
     final response = await _apiService.get(
       '/food/daily-summary',

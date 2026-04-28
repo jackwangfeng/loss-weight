@@ -1,4 +1,5 @@
 import '../models/weight_record.dart';
+import '../utils/timezone.dart';
 import 'api_service.dart';
 
 class WeightService {
@@ -49,6 +50,8 @@ class WeightService {
     if (endDate != null) {
       params['end_date'] = endDate.toIso8601String().split('T').first;
     }
+    final tz = appTimezone();
+    if (tz != null) params['tz'] = tz;
 
     final response = await _apiService.get('/weight/records', queryParameters: params);
 

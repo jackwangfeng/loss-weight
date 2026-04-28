@@ -1,4 +1,5 @@
 import '../models/exercise_record.dart';
+import '../utils/timezone.dart';
 import 'api_service.dart';
 
 class ExerciseService {
@@ -38,6 +39,8 @@ class ExerciseService {
     final qp = <String, dynamic>{'user_id': userId};
     if (startDate != null) qp['start_date'] = _fmt(startDate);
     if (endDate != null) qp['end_date'] = _fmt(endDate);
+    final tz = appTimezone();
+    if (tz != null) qp['tz'] = tz;
     final r = await _apiService.get('/exercise/records', queryParameters: qp);
     final list = r.data['records'] as List? ?? [];
     return list.map((e) => ExerciseRecord.fromJson(e)).toList();
@@ -50,6 +53,8 @@ class ExerciseService {
   }) async {
     final qp = <String, dynamic>{'user_id': userId};
     if (date != null) qp['date'] = _fmt(date);
+    final tz = appTimezone();
+    if (tz != null) qp['tz'] = tz;
     final r = await _apiService.get('/exercise/daily-summary', queryParameters: qp);
     return r.data as Map<String, dynamic>;
   }

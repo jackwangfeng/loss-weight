@@ -14,6 +14,7 @@ import 'providers/theme_provider.dart';
 import 'providers/user_provider.dart';
 import 'providers/auth_provider.dart';
 import 'screens/home_screen.dart';
+import 'utils/timezone.dart';
 
 Future<void> main() async {
   // Crashlytics has no web SDK — skip web. iOS reads GoogleService-Info.plist
@@ -56,6 +57,9 @@ Future<void> main() async {
       localeProvider.load(),
       themeProvider.load(),
       authProvider.load(),
+      // Resolve IANA tz once so every API call after startup can attach it
+      // synchronously. Failures degrade silently to UTC at the backend.
+      primeAppTimezone(),
     ]);
     runApp(RecompDailyApp(
       localeProvider: localeProvider,

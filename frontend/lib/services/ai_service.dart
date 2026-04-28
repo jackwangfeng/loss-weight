@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:http/http.dart' as http;
 import '../models/ai_chat.dart';
 import '../models/user_fact.dart';
+import '../utils/timezone.dart';
 import 'api_service.dart';
 import 'sse_client.dart';
 
@@ -17,6 +18,7 @@ class AIService {
     String? threadId,
     String? locale,
   }) async {
+    final tz = appTimezone();
     final response = await _apiService.post('/ai/chat', {
       'user_id': userId,
       'messages': [
@@ -24,6 +26,7 @@ class AIService {
       ],
       if (threadId != null) 'thread_id': threadId,
       if (locale != null) 'locale': locale,
+      if (tz != null) 'tz': tz,
     });
 
     if (response.statusCode == 200) {
@@ -53,6 +56,7 @@ class AIService {
       if (_apiService.token != null) {
         req.headers['Authorization'] = 'Bearer ${_apiService.token}';
       }
+      final tz = appTimezone();
       req.body = json.encode({
         'user_id': userId,
         'messages': [
@@ -60,6 +64,7 @@ class AIService {
         ],
         if (threadId != null) 'thread_id': threadId,
         if (locale != null) 'locale': locale,
+        if (tz != null) 'tz': tz,
       });
 
       final resp = await client.send(req);
@@ -317,9 +322,11 @@ class AIService {
     required int userId,
     String? locale,
   }) async {
+    final tz = appTimezone();
     final response = await _apiService.post('/ai/daily-brief', {
       'user_id': userId,
       if (locale != null) 'locale': locale,
+      if (tz != null) 'tz': tz,
     });
     if (response.statusCode == 200) {
       return response.data;
