@@ -41,6 +41,7 @@ iOS submission plan: `APPSTORE_CHECKLIST.md`.
 | `UserAccount` identifiers | `models/auth.go` | `Phone / Email / GoogleSub` all `*string` uniqueIndex nullable. At least one must be set for an account to exist. |
 | Default thread title | `"New chat"` | `ai_service.go:maybeAutoTitleThread` treats `""`, `"New chat"`, or legacy `"新对话"` as auto-title triggers |
 | Daily-boundary timezone | `backend/internal/services/timezone.go` (`ResolveLocation` + `StartOfDay`) + every daily/range endpoint + `frontend/lib/utils/timezone.dart` | client sends IANA `tz` (e.g. `Asia/Shanghai`) on `/v1/{food,exercise}/daily-summary`, `/v1/{food,exercise,weight}/records` (query), `/v1/ai/{daily-brief,chat,chat/stream}` (body). Backend computes `StartOfDay(t, ResolveLocation(tz))`. Empty/unknown tz → UTC. Range query `endDate` semantics is half-open (`<`); handler bumps inclusive client `end_date` to next-day midnight in client tz. |
+| AI quota | `backend/internal/services/quota.go` (`QuotaTracker`) + `ai_handler.go:quota429` | per-user-per-day cap on AI calls. Two buckets: `text` (chat / chat-stream / daily-brief / encouragement, default 200/day) and `expensive` (vision recognize, default 50/day). Tunable via `QUOTA_TEXT_PER_DAY` / `QUOTA_EXPENSIVE_PER_DAY` env vars. In-memory single-instance counter; swap to Redis if we run >1 backend pod. Exhausted → 429 `{error, bucket, used, limit}`. |
 
 ---
 

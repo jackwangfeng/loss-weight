@@ -63,14 +63,37 @@ func bindAudioRequest(c *gin.Context) (*services.TranscribeRequest, error) {
 
 type AIHandler struct {
 	service *services.AIService
+	quota   *services.QuotaTracker
 	logger  *zap.Logger
 }
 
-func NewAIHandler(service *services.AIService, logger *zap.Logger) *AIHandler {
+func NewAIHandler(service *services.AIService, quota *services.QuotaTracker, logger *zap.Logger) *AIHandler {
 	return &AIHandler{
 		service: service,
+		quota:   quota,
 		logger:  logger,
 	}
+}
+
+// quota429 writes a 429 with a small JSON shape clients can branch on.
+// Returns true if quota was exceeded (caller should return immediately).
+func (h *AIHandler) quota429(c *gin.Context, userID uint, bucket string) bool {
+	if err := h.quota.Check(userID, bucket); err != nil {
+		if err == services.ErrQuotaExceeded {
+			used, limit := h.quota.Used(userID, bucket)
+			c.JSON(http.StatusTooManyRequests, gin.H{
+				"error":  "今日 AI 额度已用完",
+				"bucket": bucket,
+				"used":   used,
+				"limit":  limit,
+			})
+			return true
+		}
+		// Misconfig (unknown bucket) — log and let through; failing closed
+		// here would be worse than over-counting one request.
+		h.logger.Error("quota check failed", zap.Error(err))
+	}
+	return false
 }
 
 // TranscribeStream upgrades the request to WebSocket and forwards audio to
@@ -97,6 +120,9 @@ func (h *AIHandler) RecognizeFood(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		h.logger.Error("failed to bind request", zap.Error(err))
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if h.quota429(c, req.UserID, services.QuotaBucketExpensive) {
 		return
 	}
 
@@ -191,6 +217,9 @@ func (h *AIHandler) GetDailyBrief(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if h.quota429(c, req.UserID, services.QuotaBucketText) {
+		return
+	}
 	result, err := h.service.GetDailyBrief(req.UserID, req.Locale, req.Tz)
 	if err != nil {
 		h.logger.Error("daily brief failed", zap.Error(err))
@@ -222,6 +251,9 @@ func (h *AIHandler) GetEncouragement(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if h.quota429(c, req.UserID, services.QuotaBucketText) {
+		return
+	}
 
 	result, err := h.service.GetEncouragement(&req)
 	if err != nil {
@@ -238,6 +270,9 @@ func (h *AIHandler) Chat(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		h.logger.Error("failed to bind request", zap.Error(err))
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if h.quota429(c, req.UserID, services.QuotaBucketText) {
 		return
 	}
 
@@ -260,6 +295,9 @@ func (h *AIHandler) ChatStream(c *gin.Context) {
 	var req services.ChatRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if h.quota429(c, req.UserID, services.QuotaBucketText) {
 		return
 	}
 

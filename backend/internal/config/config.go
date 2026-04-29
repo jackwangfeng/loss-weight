@@ -30,6 +30,11 @@ type Config struct {
 	GoogleIOSClientID  string // OAuth 2.0 iOS Client ID — iOS-native Google Sign-In returns tokens with this aud
 	DeepgramAPIKey     string // Legacy STT — fallback only; primary path now Qwen-Omni.
 	QwenAPIKey         string // DashScope key for Qwen-Omni ASR (中文 WER ~6% vs Deepgram nova-2 ~10-15%)
+	// Per-user daily AI quota — caps Gemini cost from heavy/abusive callers.
+	// Text bucket: chat / chat-stream / daily-brief / encouragement.
+	// Expensive bucket: vision recognize.
+	QuotaTextPerDay      int
+	QuotaExpensivePerDay int
 }
 
 // Load reads configuration from file and environment variables
@@ -44,6 +49,8 @@ func Load(configPath string) (*Config, error) {
 	viper.SetDefault("redis_url", "redis://localhost:6379")
 	viper.SetDefault("secret_key", "your-secret-key-change-in-production")
 	viper.SetDefault("jwt_expire_days", 7)
+	viper.SetDefault("quota_text_per_day", 200)
+	viper.SetDefault("quota_expensive_per_day", 50)
 
 	// Read config file
 	viper.SetConfigName(configPath)
@@ -68,6 +75,8 @@ func Load(configPath string) (*Config, error) {
 	_ = viper.BindEnv("redis_url", "REDIS_URL")
 	_ = viper.BindEnv("deepgram_api_key", "DEEPGRAM_API_KEY")
 	_ = viper.BindEnv("qwen_api_key", "QWEN_API_KEY", "DASHSCOPE_API_KEY")
+	_ = viper.BindEnv("quota_text_per_day", "QUOTA_TEXT_PER_DAY")
+	_ = viper.BindEnv("quota_expensive_per_day", "QUOTA_EXPENSIVE_PER_DAY")
 
 	// Try to read config file (optional)
 	if err := viper.ReadInConfig(); err != nil {
@@ -98,6 +107,8 @@ func Load(configPath string) (*Config, error) {
 		GoogleIOSClientID: viper.GetString("google_ios_client_id"),
 		DeepgramAPIKey:    viper.GetString("deepgram_api_key"),
 		QwenAPIKey:        viper.GetString("qwen_api_key"),
+		QuotaTextPerDay:      viper.GetInt("quota_text_per_day"),
+		QuotaExpensivePerDay: viper.GetInt("quota_expensive_per_day"),
 	}
 
 	return config, nil

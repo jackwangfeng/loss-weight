@@ -106,6 +106,7 @@ func languageName(locale string) string {
 }
 
 type RecognizeFoodRequest struct {
+	UserID   uint   `json:"user_id"` // for quota tracking; 0 means "anonymous" → shares one bucket
 	ImageURL string `json:"image_url" binding:"required"`
 	Locale   string `json:"locale"`
 }
