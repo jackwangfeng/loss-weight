@@ -19,10 +19,18 @@ class ApiService {
     if (override.isNotEmpty) return override;
     if (kIsWeb) {
       final base = Uri.base;
-      if (base.host.isNotEmpty) {
-        return '${base.scheme}://${base.host}:8000/v1';
+      // Local dev (E2E + flutter run -d web-server): backend on localhost:8000.
+      if (base.host == 'localhost' || base.host == '127.0.0.1') {
+        return 'http://localhost:8000/v1';
       }
-      return 'http://localhost:8000/v1';
+      // Cloudflare Pages preview hosts (*.pages.dev) — no backend on the
+      // pages.dev origin; call the prod backend cross-origin (CORS open).
+      if (base.host.endsWith('.pages.dev')) {
+        return _kBetaBackend;
+      }
+      // Production domain (e.g. recompdaily.com): same-origin /v1, CF
+      // Origin Rule routes /v1/* to EC2:8000.
+      return '${base.scheme}://${base.host}/v1';
     }
     return _kBetaBackend;
   }

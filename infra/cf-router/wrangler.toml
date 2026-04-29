@@ -1,0 +1,9 @@
+name = "recompd-router"
+main = "src/index.js"
+compatibility_date = "2026-04-29"
+account_id = "864167311d618f330747c17ada28b4c7"
+
+# Bind to all paths on recompdaily.com — Worker is in front of everything.
+routes = [
+  { pattern = "recompdaily.com/*", zone_name = "recompdaily.com" }
+]
