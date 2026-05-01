@@ -57,7 +57,7 @@ ssh -i "$SSH_KEY" \
    sudo docker rm -f recompdaily >/dev/null 2>&1 || true
    sudo docker run -d --name recompdaily --network openim-docker_openim -p 8000:8000 --restart always \\
      -e DATABASE_URL=\"\$DB_URL\" -e GEMINI_API_KEY=\"\$GEMINI_KEY\" -e SECRET_KEY=\"\$JWT_KEY\" -e DEEPGRAM_API_KEY=\"\$DG_KEY\" -e QWEN_API_KEY=\"\$QWEN_KEY\" \\
-     -e GEMINI_API_URL='https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent' \\
+     -e GEMINI_API_URL='https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent' \\
      -e VISION_API_URL='https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent' \\
      -e GOOGLE_CLIENT_ID='604310975641-chq87tal9oii607rigc1uq59vjsirgas.apps.googleusercontent.com' \\
      -e GOOGLE_IOS_CLIENT_ID='604310975641-kbbf1h3r3v5q81fljqdev4r9lqeoplip.apps.googleusercontent.com' \\

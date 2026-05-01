@@ -38,6 +38,12 @@ type StreamChunk struct {
 // gemini_api_url / vision_api_url 覆盖。
 const defaultGeminiURL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
+// isThinkingOnlyModel 判断 URL 指向的 Gemini 模型是否强制 thinking
+// （3.x Pro / Pro-preview 是 thinking-only，发 thinkingBudget=0 会 400）。
+func isThinkingOnlyModel(apiURL string) bool {
+	return strings.Contains(apiURL, "-pro")
+}
+
 // errLLMNotConfigured 当 debug=false 且 LLM key 缺失时返回。
 var errLLMNotConfigured = errors.New("LLM not configured: set GEMINI_API_KEY or run in debug mode to use mocks")
 
@@ -1308,15 +1314,19 @@ func (s *AIService) callLLM(messages []ChatMessage) (*ChatMessage, error) {
 		})
 	}
 
+	genConfig := map[string]interface{}{
+		"temperature":     0.7,
+		"maxOutputTokens": 4096,
+	}
+	// 关 thinking — Flash 默认开 thinking 会多花 3-5s，短任务（parse / estimate /
+	// encourage）和普通 chat 不需要。Pro 是 thinking-only 模型，budget 0 会被拒，
+	// 所以只对 Flash/Lite 显式关 thinking，Pro 走默认（dynamic）。
+	if !isThinkingOnlyModel(apiURL) {
+		genConfig["thinkingConfig"] = map[string]interface{}{"thinkingBudget": 0}
+	}
 	payload := map[string]interface{}{
-		"contents": contents,
-		"generationConfig": map[string]interface{}{
-			"temperature":     0.7,
-			"maxOutputTokens": 4096,
-			// 关 thinking — 见 callLLMStream 注释。所有短任务（parse / estimate /
-			// encourage）共用 callLLM，都不需要深度推理。
-			"thinkingConfig": map[string]interface{}{"thinkingBudget": 0},
-		},
+		"contents":         contents,
+		"generationConfig": genConfig,
 	}
 	if len(systemTexts) > 0 {
 		payload["systemInstruction"] = map[string]interface{}{
@@ -1476,19 +1486,21 @@ func (s *AIService) streamOneTurn(
 	systemTexts []string,
 	out chan<- StreamChunk,
 ) ([]toolCall, error) {
+	genConfig := map[string]interface{}{
+		"temperature":     0.7,
+		"maxOutputTokens": 4096,
+	}
+	// 关 thinking：Flash 默认开 thinking 要多花 3-5s 才出首字。Pro 是 thinking-only
+	// 模型，budget 0 会 400，所以只对非 Pro 模型显式关 thinking。
+	if !isThinkingOnlyModel(streamURL) {
+		genConfig["thinkingConfig"] = map[string]interface{}{"thinkingBudget": 0}
+	}
 	payload := map[string]interface{}{
 		"contents": contents,
 		"tools": []map[string]interface{}{
 			{"function_declarations": s.toolDeclarations()},
 		},
-		"generationConfig": map[string]interface{}{
-			"temperature":     0.7,
-			"maxOutputTokens": 4096,
-			// 关 thinking：实测 Flash 默认开 thinking 要多花 3-5s 才出首字，
-			// 对 coach 对话没必要深度推理，Flash 不想=更快+质量不差（实测
-			// 甚至比 Flash-Lite 更准）。
-			"thinkingConfig": map[string]interface{}{"thinkingBudget": 0},
-		},
+		"generationConfig": genConfig,
 	}
 	if len(systemTexts) > 0 {
 		payload["systemInstruction"] = map[string]interface{}{
