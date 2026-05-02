@@ -19,6 +19,7 @@ import '../models/exercise_record.dart';
 import '../models/weight_record.dart';
 import '../widgets/macro_dashboard_card.dart';
 import 'quick_setup_sheet.dart';
+import 'today_food_list_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -640,13 +641,15 @@ class _RecentTimeline extends StatefulWidget {
 }
 
 class _TimelineItem {
+  final int recordId;
   final DateTime at;
-  final int kind;
+  final int kind; // 0=food, 1=exercise, 2=weight
   final IconData icon;
   final Color color;
   final String title;
   final String subtitle;
   _TimelineItem({
+    required this.recordId,
     required this.at,
     required this.kind,
     required this.icon,
@@ -682,6 +685,7 @@ class _RecentTimelineState extends State<_RecentTimeline> {
       final items = <_TimelineItem>[];
       for (final r in (results[0] as List<FoodRecord>)) {
         items.add(_TimelineItem(
+          recordId: r.id,
           at: r.eatenAt,
           kind: 0,
           icon: Icons.restaurant,
@@ -692,6 +696,7 @@ class _RecentTimelineState extends State<_RecentTimeline> {
       }
       for (final r in (results[1] as List<ExerciseRecord>)) {
         items.add(_TimelineItem(
+          recordId: r.id,
           at: r.exercisedAt,
           kind: 1,
           icon: Icons.fitness_center,
@@ -702,6 +707,7 @@ class _RecentTimelineState extends State<_RecentTimeline> {
       }
       for (final r in (results[2] as List<WeightRecord>)) {
         items.add(_TimelineItem(
+          recordId: r.id,
           at: r.measuredAt,
           kind: 2,
           icon: Icons.monitor_weight,
@@ -716,6 +722,54 @@ class _RecentTimelineState extends State<_RecentTimeline> {
       // Silent on home.
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<bool> _confirmDismiss(AppLocalizations l10n, _TimelineItem item) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.entryDeleteConfirm(item.title)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.actionCancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l10n.actionDelete,
+                style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+          ),
+        ],
+      ),
+    );
+    return ok == true;
+  }
+
+  Future<void> _doDelete(AppLocalizations l10n, _TimelineItem item) async {
+    try {
+      switch (item.kind) {
+        case 0:
+          await _foodSvc.deleteRecord(item.recordId);
+          break;
+        case 1:
+          await _exerciseSvc.deleteRecord(item.recordId);
+          break;
+        case 2:
+          await _weightSvc.deleteRecord(item.recordId);
+          break;
+      }
+      if (!mounted) return;
+      setState(() {
+        _items = _items.where((x) => !(x.kind == item.kind && x.recordId == item.recordId)).toList();
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.errorDeleteFailed(e.toString()))),
+      );
+      // Re-load to recover the row that Dismissible already removed locally.
+      _load();
     }
   }
 
@@ -781,20 +835,38 @@ class _RecentTimelineState extends State<_RecentTimeline> {
               )
             else
               for (final item in _items)
-                ListTile(
-                  dense: true,
-                  leading: CircleAvatar(
-                    radius: 16,
-                    backgroundColor: item.color.withValues(alpha: 0.18),
-                    child: Icon(item.icon, size: 16, color: item.color),
+                Dismissible(
+                  key: ValueKey('tl-${item.kind}-${item.recordId}'),
+                  direction: DismissDirection.endToStart,
+                  background: Container(
+                    color: scheme.error,
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.only(right: 20),
+                    child: Icon(Icons.delete_outline, color: scheme.onError),
                   ),
-                  title: Text(item.title,
-                      maxLines: 1, overflow: TextOverflow.ellipsis),
-                  subtitle: Text(item.subtitle,
-                      maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: scheme.onSurfaceVariant)),
-                  trailing: Text(_relative(l10n, item.at),
-                      style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
+                  confirmDismiss: (_) => _confirmDismiss(l10n, item),
+                  onDismissed: (_) => _doDelete(l10n, item),
+                  // Semantics inside Dismissible — outside, the label gets
+                  // dropped (Dismissible owns the parent semantics node).
+                  child: Semantics(
+                    container: true,
+                    label: '${item.title} ${item.subtitle}',
+                    child: ListTile(
+                      dense: true,
+                      leading: CircleAvatar(
+                        radius: 16,
+                        backgroundColor: item.color.withValues(alpha: 0.18),
+                        child: Icon(item.icon, size: 16, color: item.color),
+                      ),
+                      title: Text(item.title,
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                      subtitle: Text(item.subtitle,
+                          maxLines: 1, overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: scheme.onSurfaceVariant)),
+                      trailing: Text(_relative(l10n, item.at),
+                          style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
+                    ),
+                  ),
                 ),
           ],
         ),
@@ -844,7 +916,20 @@ class _TodayMacroCardState extends State<_TodayMacroCard> {
 
   @override
   Widget build(BuildContext context) {
-    return MacroDashboardCard(todayRecords: _today);
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () async {
+        final changed = await Navigator.of(context).push<bool>(
+          MaterialPageRoute(
+            builder: (_) => TodayFoodListScreen(userId: widget.userId),
+          ),
+        );
+        if (changed == true && mounted) {
+          _load();
+        }
+      },
+      child: MacroDashboardCard(todayRecords: _today),
+    );
   }
 }
 

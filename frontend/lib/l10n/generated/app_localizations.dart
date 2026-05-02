@@ -902,6 +902,30 @@ abstract class AppLocalizations {
   /// **'{n, plural, =1{1 meal} other{{n} meals}}'**
   String foodMealCount(int n);
 
+  /// No description provided for @todayFoodTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Today\'s food'**
+  String get todayFoodTitle;
+
+  /// No description provided for @todayFoodEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing logged for today.'**
+  String get todayFoodEmpty;
+
+  /// No description provided for @foodDeleteConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete \"{name}\"?'**
+  String foodDeleteConfirm(String name);
+
+  /// No description provided for @entryDeleteConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete \"{title}\"?'**
+  String entryDeleteConfirm(String title);
+
   /// No description provided for @foodMacroProtein.
   ///
   /// In en, this message translates to:

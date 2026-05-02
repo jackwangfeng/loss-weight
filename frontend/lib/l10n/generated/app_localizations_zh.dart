@@ -459,6 +459,22 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get todayFoodTitle => '今天的食物';
+
+  @override
+  String get todayFoodEmpty => '今天还没记录任何食物。';
+
+  @override
+  String foodDeleteConfirm(String name) {
+    return '删除「$name」？';
+  }
+
+  @override
+  String entryDeleteConfirm(String title) {
+    return '删除「$title」？';
+  }
+
+  @override
   String get foodMacroProtein => '蛋白';
 
   @override

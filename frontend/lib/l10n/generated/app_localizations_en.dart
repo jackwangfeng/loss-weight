@@ -466,6 +466,22 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get todayFoodTitle => 'Today\'s food';
+
+  @override
+  String get todayFoodEmpty => 'Nothing logged for today.';
+
+  @override
+  String foodDeleteConfirm(String name) {
+    return 'Delete \"$name\"?';
+  }
+
+  @override
+  String entryDeleteConfirm(String title) {
+    return 'Delete \"$title\"?';
+  }
+
+  @override
   String get foodMacroProtein => 'PROTEIN';
 
   @override
