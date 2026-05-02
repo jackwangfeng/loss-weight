@@ -44,6 +44,18 @@ func isThinkingOnlyModel(apiURL string) bool {
 	return strings.Contains(apiURL, "-pro")
 }
 
+// maxOutputTokensForChat 给 chat 路径选 maxOutputTokens。Flash 关 thinking
+// 后 4096 足够；Pro 默认 dynamic thinking，thinking + 最终输出共享这个预算，
+// 真实用户上下文（system + facts + RAG + 历史）下 4096 经常被 thinking
+// 吃光，候选返回 0 part —— 后端识别成 "no response from LLM"。给 Pro 留
+// 16384 让 thinking 花够还有空间出文字。
+func maxOutputTokensForChat(apiURL string) int {
+	if isThinkingOnlyModel(apiURL) {
+		return 16384
+	}
+	return 4096
+}
+
 // errLLMNotConfigured 当 debug=false 且 LLM key 缺失时返回。
 var errLLMNotConfigured = errors.New("LLM not configured: set GEMINI_API_KEY or run in debug mode to use mocks")
 
@@ -1316,7 +1328,7 @@ func (s *AIService) callLLM(messages []ChatMessage) (*ChatMessage, error) {
 
 	genConfig := map[string]interface{}{
 		"temperature":     0.7,
-		"maxOutputTokens": 4096,
+		"maxOutputTokens": maxOutputTokensForChat(apiURL),
 	}
 	// 关 thinking — Flash 默认开 thinking 会多花 3-5s，短任务（parse / estimate /
 	// encourage）和普通 chat 不需要。Pro 是 thinking-only 模型，budget 0 会被拒，
@@ -1488,7 +1500,7 @@ func (s *AIService) streamOneTurn(
 ) ([]toolCall, error) {
 	genConfig := map[string]interface{}{
 		"temperature":     0.7,
-		"maxOutputTokens": 4096,
+		"maxOutputTokens": maxOutputTokensForChat(streamURL),
 	}
 	// 关 thinking：Flash 默认开 thinking 要多花 3-5s 才出首字。Pro 是 thinking-only
 	// 模型，budget 0 会 400，所以只对非 Pro 模型显式关 thinking。
