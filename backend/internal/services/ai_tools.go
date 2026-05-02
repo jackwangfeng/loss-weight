@@ -57,7 +57,12 @@ func (s *AIService) toolDeclarations() []map[string]interface{} {
 				"Call this whenever the user reports eating something (e.g. 'I had 200g chicken breast for lunch', " +
 				"'我中午吃了两个鸡蛋一碗米饭'). Estimate calories and macros from the description if the user " +
 				"didn't give exact numbers — be honest about it being an estimate in your reply. " +
-				"Do not call this for hypothetical 'should I eat X' questions.",
+				"Do not call this for hypothetical 'should I eat X' questions. " +
+				"Default `mode` is 'auto', which de-duplicates and detects same-meal conflicts. " +
+				"If the response says `status: \"duplicate_skipped\"`, tell the user the item was already logged and do nothing more. " +
+				"If `status: \"needs_choice\"`, the user already has a different record under the same meal_type today; " +
+				"ask the user whether to **replace** (覆盖) or **add another** (追加), then call log_food again with " +
+				"`mode: \"overwrite\"` or `mode: \"append\"` accordingly.",
 			"parameters": map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -101,6 +106,11 @@ func (s *AIService) toolDeclarations() []map[string]interface{} {
 					"eaten_at": map[string]interface{}{
 						"type":        "string",
 						"description": "ISO 8601 datetime. Omit for 'now / just ate' — backend defaults to current time.",
+					},
+					"mode": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"auto", "overwrite", "append"},
+						"description": "Conflict handling. 'auto' (default): backend dedups + flags same-meal conflicts. 'overwrite': replace all existing same-meal_type records today with this one. 'append': force-insert as an additional record. Use 'overwrite' / 'append' only after the user has explicitly chosen.",
 					},
 				},
 				"required": []string{"food_name", "calories", "meal_type"},
@@ -156,12 +166,12 @@ func (s *AIService) toolDeclarations() []map[string]interface{} {
 //   - chunk: 推给前端的 action 帧（卡片渲染用）；nil 表示这次工具不展示卡片
 //   - err: 工具执行失败（DB 出错等）。即使 err != nil，resultForLLM 也会带 error 字段，
 //     让 LLM 自己跟用户说"出问题了"。
-func (s *AIService) executeTool(userID uint, call toolCall) (map[string]interface{}, *StreamChunk, error) {
+func (s *AIService) executeTool(userID uint, tz string, call toolCall) (map[string]interface{}, *StreamChunk, error) {
 	switch call.Name {
 	case "log_weight":
 		return s.execLogWeight(userID, call.Args)
 	case "log_food":
-		return s.execLogFood(userID, call.Args)
+		return s.execLogFood(userID, tz, call.Args)
 	case "log_training":
 		return s.execLogTraining(userID, call.Args)
 	default:
@@ -222,7 +232,7 @@ func (s *AIService) execLogWeight(userID uint, args map[string]interface{}) (map
 		nil
 }
 
-func (s *AIService) execLogFood(userID uint, args map[string]interface{}) (map[string]interface{}, *StreamChunk, error) {
+func (s *AIService) execLogFood(userID uint, tz string, args map[string]interface{}) (map[string]interface{}, *StreamChunk, error) {
 	foodName, _ := args["food_name"].(string)
 	if foodName == "" {
 		return map[string]interface{}{"error": "food_name is required"}, nil,
@@ -254,54 +264,203 @@ func (s *AIService) execLogFood(userID uint, args map[string]interface{}) (map[s
 	portion, _ := numberArg(args, "portion")
 	unit, _ := args["unit"].(string)
 
-	rec := &models.FoodRecord{
-		UserID:        userID,
+	mode, _ := args["mode"].(string)
+	switch mode {
+	case "", "auto":
+		mode = "auto"
+	case "overwrite", "append":
+	default:
+		// 未知 mode 当 auto 处理 —— 比硬错好，不阻塞模型 retry。
+		mode = "auto"
+	}
+
+	// 「今天」按用户 tz 的日界取，跟 system prompt 里"Eaten today"对齐。
+	loc := ResolveLocation(tz)
+	dayStart := StartOfDay(eatenAt, loc)
+	dayEnd := dayStart.Add(24 * time.Hour)
+
+	insertNew := func() (*models.FoodRecord, error) {
+		rec := &models.FoodRecord{
+			UserID:        userID,
+			FoodName:      foodName,
+			Calories:      float32(calories),
+			Protein:       float32(protein),
+			Carbohydrates: float32(carbs),
+			Fat:           float32(fat),
+			Fiber:         float32(fiber),
+			Portion:       float32(portion),
+			Unit:          unit,
+			MealType:      mealType,
+			EatenAt:       eatenAt,
+		}
+		if err := s.db.Create(rec).Error; err != nil {
+			return nil, err
+		}
+		s.logger.Info("log_food tool",
+			zap.Uint("user_id", userID),
+			zap.Uint("record_id", rec.ID),
+			zap.String("food", rec.FoodName),
+			zap.Float32("kcal", rec.Calories),
+			zap.String("mode", mode),
+		)
+		return rec, nil
+	}
+
+	successResp := func(rec *models.FoodRecord, replacedIDs []uint) (map[string]interface{}, *StreamChunk, error) {
+		payload := map[string]interface{}{
+			"record_id":     rec.ID,
+			"food_name":     rec.FoodName,
+			"calories":      rec.Calories,
+			"protein":       rec.Protein,
+			"carbohydrates": rec.Carbohydrates,
+			"fat":           rec.Fat,
+			"meal_type":     rec.MealType,
+			"eaten_at":      rec.EatenAt.Format(time.RFC3339),
+		}
+		if len(replacedIDs) > 0 {
+			payload["replaced_ids"] = replacedIDs
+		}
+		payloadJSON, _ := json.Marshal(payload)
+		llmResp := map[string]interface{}{
+			"status":    "logged",
+			"record_id": rec.ID,
+			"food_name": rec.FoodName,
+			"calories":  rec.Calories,
+			"meal_type": rec.MealType,
+		}
+		if len(replacedIDs) > 0 {
+			llmResp["replaced_ids"] = replacedIDs
+		}
+		return llmResp,
+			&StreamChunk{Action: "log_food", ActionPayload: string(payloadJSON)},
+			nil
+	}
+
+	// append: 跳过查重，直接插。
+	if mode == "append" {
+		rec, err := insertNew()
+		if err != nil {
+			s.logger.Error("log_food tool: db create failed", zap.Error(err))
+			return map[string]interface{}{"error": "database error saving food"}, nil, err
+		}
+		return successResp(rec, nil)
+	}
+
+	// auto / overwrite 都要先看今天同 meal_type 有什么。
+	var existing []models.FoodRecord
+	if err := s.db.Where(
+		"user_id = ? AND meal_type = ? AND eaten_at >= ? AND eaten_at < ?",
+		userID, mealType, dayStart, dayEnd,
+	).Order("eaten_at ASC").Find(&existing).Error; err != nil {
+		s.logger.Warn("log_food: existing lookup failed, proceeding without dedup", zap.Error(err))
+		existing = nil
+	}
+
+	if mode == "overwrite" {
+		// 删今天同 meal_type 全部老记录，再插入新。
+		replacedIDs := make([]uint, 0, len(existing))
+		for _, e := range existing {
+			replacedIDs = append(replacedIDs, e.ID)
+		}
+		if len(replacedIDs) > 0 {
+			if err := s.db.Delete(&models.FoodRecord{}, replacedIDs).Error; err != nil {
+				s.logger.Error("log_food overwrite: delete failed", zap.Error(err))
+				return map[string]interface{}{"error": "database error replacing food records"}, nil, err
+			}
+		}
+		rec, err := insertNew()
+		if err != nil {
+			s.logger.Error("log_food tool: db create failed", zap.Error(err))
+			return map[string]interface{}{"error": "database error saving food"}, nil, err
+		}
+		return successResp(rec, replacedIDs)
+	}
+
+	// auto
+	if len(existing) == 0 {
+		// 没冲突，直接插。
+		rec, err := insertNew()
+		if err != nil {
+			s.logger.Error("log_food tool: db create failed", zap.Error(err))
+			return map[string]interface{}{"error": "database error saving food"}, nil, err
+		}
+		return successResp(rec, nil)
+	}
+
+	// 有同 meal_type 老记录：让 LLM 判
+	verdict := s.classifyFoodConflict(proposedFood{
 		FoodName:      foodName,
 		Calories:      float32(calories),
 		Protein:       float32(protein),
 		Carbohydrates: float32(carbs),
 		Fat:           float32(fat),
-		Fiber:         float32(fiber),
-		Portion:       float32(portion),
-		Unit:          unit,
 		MealType:      mealType,
-		EatenAt:       eatenAt,
-	}
-	if err := s.db.Create(rec).Error; err != nil {
-		s.logger.Error("log_food tool: db create failed", zap.Error(err))
-		return map[string]interface{}{"error": "database error saving food"}, nil, err
-	}
-	s.logger.Info("log_food tool",
-		zap.Uint("user_id", userID),
-		zap.Uint("record_id", rec.ID),
-		zap.String("food", rec.FoodName),
-		zap.Float32("kcal", rec.Calories),
-	)
+	}, existing)
 
-	payload := map[string]interface{}{
-		"record_id":     rec.ID,
-		"food_name":     rec.FoodName,
-		"calories":      rec.Calories,
-		"protein":       rec.Protein,
-		"carbohydrates": rec.Carbohydrates,
-		"fat":           rec.Fat,
-		"meal_type":     rec.MealType,
-		"eaten_at":      rec.EatenAt.Format(time.RFC3339),
-	}
-	payloadJSON, _ := json.Marshal(payload)
+	switch verdict.Verdict {
+	case conflictExactDup:
+		// 静默跳过；返一个 LLM 看得懂的状态，让模型告诉用户已经记过了。
+		// 不发 action chunk —— 前端不展示新卡片。
+		var matched *models.FoodRecord
+		for i := range existing {
+			if existing[i].ID == verdict.MatchedID {
+				matched = &existing[i]
+				break
+			}
+		}
+		resp := map[string]interface{}{
+			"status":    "duplicate_skipped",
+			"food_name": foodName,
+			"meal_type": mealType,
+			"reason":    verdict.Reason,
+		}
+		if matched != nil {
+			resp["matched_record_id"] = matched.ID
+			resp["matched_food_name"] = matched.FoodName
+			resp["matched_calories"] = matched.Calories
+		}
+		s.logger.Info("log_food: exact_duplicate skipped",
+			zap.Uint("user_id", userID),
+			zap.String("food", foodName),
+			zap.Uint("matched_id", verdict.MatchedID),
+		)
+		return resp, nil, nil
 
-	return map[string]interface{}{
-			"ok":        true,
-			"record_id": rec.ID,
-			"food_name": rec.FoodName,
-			"calories":  rec.Calories,
-			"meal_type": rec.MealType,
-		},
-		&StreamChunk{
-			Action:        "log_food",
-			ActionPayload: string(payloadJSON),
-		},
-		nil
+	case conflictSameMeal:
+		// 同 meal_type 已有不同食物：让模型问用户。不插也不发 chunk。
+		existingSummary := make([]map[string]interface{}, 0, len(existing))
+		for _, e := range existing {
+			existingSummary = append(existingSummary, map[string]interface{}{
+				"record_id": e.ID,
+				"food_name": e.FoodName,
+				"calories":  e.Calories,
+			})
+		}
+		s.logger.Info("log_food: needs_choice",
+			zap.Uint("user_id", userID),
+			zap.String("food", foodName),
+			zap.Int("existing_count", len(existing)),
+		)
+		return map[string]interface{}{
+			"status":              "needs_choice",
+			"meal_type":           mealType,
+			"proposed_food_name":  foodName,
+			"proposed_calories":   float32(calories),
+			"existing":            existingSummary,
+			"hint": "Ask the user to choose: overwrite (覆盖) the existing " + mealType +
+				" record(s) with this new entry, or append (追加) this as an additional item. " +
+				"Then call log_food again with mode=overwrite or mode=append.",
+		}, nil, nil
+
+	default:
+		// no_conflict 或兜底：直接插
+		rec, err := insertNew()
+		if err != nil {
+			s.logger.Error("log_food tool: db create failed", zap.Error(err))
+			return map[string]interface{}{"error": "database error saving food"}, nil, err
+		}
+		return successResp(rec, nil)
+	}
 }
 
 func (s *AIService) execLogTraining(userID uint, args map[string]interface{}) (map[string]interface{}, *StreamChunk, error) {

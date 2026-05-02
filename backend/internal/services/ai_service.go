@@ -1427,7 +1427,7 @@ func (s *AIService) callLLM(messages []ChatMessage) (*ChatMessage, error) {
 // 后端本地执行（落库、emit action chunk），然后把 model 的 functionCall +
 // 我们的 functionResponse 拼回 contents，再发下一轮，直到 model 不再调工具
 // 或达到 maxToolIterations 上限。
-func (s *AIService) callLLMStream(ctx context.Context, userID uint, messages []ChatMessage) (<-chan StreamChunk, error) {
+func (s *AIService) callLLMStream(ctx context.Context, userID uint, tz string, messages []ChatMessage) (<-chan StreamChunk, error) {
 	apiURL := s.llmAPIURL
 	if apiURL == "" {
 		apiURL = defaultGeminiURL
@@ -1489,7 +1489,7 @@ func (s *AIService) callLLMStream(ctx context.Context, userID uint, messages []C
 			// 逐个执行 + 把结果拼成一条 user 消息（functionResponse parts）
 			respParts := make([]map[string]interface{}, 0, len(calls))
 			for _, c := range calls {
-				result, actionChunk, err := s.executeTool(userID, c)
+				result, actionChunk, err := s.executeTool(userID, tz, c)
 				if err != nil {
 					s.logger.Warn("tool execution failed",
 						zap.String("tool", c.Name), zap.Error(err))
@@ -1682,7 +1682,7 @@ func (s *AIService) ChatStream(ctx context.Context, req *ChatRequest) (<-chan St
 		return nil, err
 	}
 
-	upstream, err := s.callLLMStream(ctx, req.UserID, messages)
+	upstream, err := s.callLLMStream(ctx, req.UserID, req.Tz, messages)
 	if err != nil {
 		return nil, err
 	}
