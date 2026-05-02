@@ -1371,6 +1371,11 @@ func (s *AIService) callLLM(messages []ChatMessage) (*ChatMessage, error) {
 		return nil, fmt.Errorf("LLM API error: %d, body: %s", resp.StatusCode, string(body))
 	}
 
+	rawBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
 	var result struct {
 		Candidates []struct {
 			Content struct {
@@ -1378,21 +1383,41 @@ func (s *AIService) callLLM(messages []ChatMessage) (*ChatMessage, error) {
 					Text string `json:"text"`
 				} `json:"parts"`
 			} `json:"content"`
+			FinishReason string `json:"finishReason"`
 		} `json:"candidates"`
+		PromptFeedback map[string]interface{} `json:"promptFeedback,omitempty"`
+		UsageMetadata  map[string]interface{} `json:"usageMetadata,omitempty"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(rawBody, &result); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	if len(result.Candidates) == 0 || len(result.Candidates[0].Content.Parts) == 0 {
-		return nil, errors.New("no response from LLM")
+	// 拼所有 part 的 text（Pro thinking 可能拆多个 part，比如先 thought-only
+	// 后真文本；只取 Parts[0].Text 会漏字）。
+	if len(result.Candidates) > 0 {
+		var sb strings.Builder
+		for _, p := range result.Candidates[0].Content.Parts {
+			sb.WriteString(p.Text)
+		}
+		if sb.Len() > 0 {
+			return &ChatMessage{Role: "assistant", Content: sb.String()}, nil
+		}
 	}
 
-	return &ChatMessage{
-		Role:    "assistant",
-		Content: result.Candidates[0].Content.Parts[0].Text,
-	}, nil
+	// 走到这里 = Gemini 返了 200 但没文字内容。把元信息记下来，便于
+	// 区分 MAX_TOKENS / SAFETY / RECITATION / 全 thinking 没出文字 等情况。
+	finishReason := ""
+	if len(result.Candidates) > 0 {
+		finishReason = result.Candidates[0].FinishReason
+	}
+	s.logger.Warn("LLM returned no text",
+		zap.Int("candidates", len(result.Candidates)),
+		zap.String("finishReason", finishReason),
+		zap.Any("promptFeedback", result.PromptFeedback),
+		zap.Any("usage", result.UsageMetadata),
+		zap.String("rawBody", truncate(string(rawBody), 1500)))
+	return nil, errors.New("no response from LLM")
 }
 
 // callLLMStream: 调 Gemini streamGenerateContent?alt=sse，按增量文本往 channel 里喂。
@@ -1441,15 +1466,20 @@ func (s *AIService) callLLMStream(ctx context.Context, userID uint, messages []C
 			if len(calls) == 0 {
 				return
 			}
-			// 把 model 的 functionCall part 拼成一条 model 消息
+			// 把 model 的 functionCall part 拼成一条 model 消息。
+			// Pro thinking 模型要求 thoughtSignature 原样回传，否则 400。
 			modelParts := make([]map[string]interface{}, 0, len(calls))
 			for _, c := range calls {
-				modelParts = append(modelParts, map[string]interface{}{
+				part := map[string]interface{}{
 					"functionCall": map[string]interface{}{
 						"name": c.Name,
 						"args": c.Args,
 					},
-				})
+				}
+				if c.Signature != "" {
+					part["thoughtSignature"] = c.Signature
+				}
+				modelParts = append(modelParts, part)
 			}
 			contents = append(contents, map[string]interface{}{
 				"role":  "model",
@@ -1558,8 +1588,9 @@ func (s *AIService) streamOneTurn(
 			Candidates []struct {
 				Content struct {
 					Parts []struct {
-						Text         string `json:"text,omitempty"`
-						FunctionCall *struct {
+						Text             string `json:"text,omitempty"`
+						ThoughtSignature string `json:"thoughtSignature,omitempty"`
+						FunctionCall     *struct {
 							Name string                 `json:"name"`
 							Args map[string]interface{} `json:"args"`
 						} `json:"functionCall,omitempty"`
@@ -1575,8 +1606,9 @@ func (s *AIService) streamOneTurn(
 			for _, part := range cand.Content.Parts {
 				if part.FunctionCall != nil && part.FunctionCall.Name != "" {
 					calls = append(calls, toolCall{
-						Name: part.FunctionCall.Name,
-						Args: part.FunctionCall.Args,
+						Name:      part.FunctionCall.Name,
+						Args:      part.FunctionCall.Args,
+						Signature: part.ThoughtSignature,
 					})
 					continue
 				}

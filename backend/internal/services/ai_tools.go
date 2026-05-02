@@ -14,9 +14,13 @@ import (
 const maxToolIterations = 3
 
 // toolCall 是从 Gemini 流里解析出来的待执行工具调用。
+// Signature 是 Pro thinking 模型在 functionCall part 上附带的
+// thoughtSignature；下一轮把 model functionCall 喂回 contents 时
+// 必须原样带回，否则 Gemini 返 400 INVALID_ARGUMENT。
 type toolCall struct {
-	Name string                 `json:"name"`
-	Args map[string]interface{} `json:"args"`
+	Name      string                 `json:"name"`
+	Args      map[string]interface{} `json:"args"`
+	Signature string                 `json:"-"`
 }
 
 // toolDeclarations 返回 Gemini API 的 tools[].function_declarations 数组。
