@@ -774,19 +774,23 @@ class _RecentTimelineState extends State<_RecentTimeline> {
   }
 
   String _relative(AppLocalizations l10n, DateTime d) {
+    // Server returns UTC; convert to local before any year/month/day/hour
+    // comparison or formatting, otherwise records logged in non-UTC tz get
+    // bucketed wrong around midnight.
+    final dl = d.toLocal();
     final now = DateTime.now();
-    final diff = now.difference(d);
+    final diff = now.difference(dl);
     if (diff.inSeconds < 60) return l10n.timeJustNow;
     if (diff.inMinutes < 60) return l10n.timeMinutesAgo(diff.inMinutes);
-    if (diff.inHours < 24 && now.day == d.day) {
-      return '${d.hour.toString().padLeft(2, "0")}:${d.minute.toString().padLeft(2, "0")}';
+    if (diff.inHours < 24 && now.day == dl.day) {
+      return '${dl.hour.toString().padLeft(2, "0")}:${dl.minute.toString().padLeft(2, "0")}';
     }
     if (diff.inDays == 1 ||
-        (diff.inHours < 48 && now.day - d.day == 1)) {
+        (diff.inHours < 48 && now.day - dl.day == 1)) {
       return l10n.timeYesterday;
     }
     if (diff.inDays < 7) return l10n.timeDaysAgo(diff.inDays);
-    return '${d.month}/${d.day}';
+    return '${dl.month}/${dl.day}';
   }
 
   @override
@@ -901,13 +905,13 @@ class _TodayMacroCardState extends State<_TodayMacroCard> {
       final all = await _foodSvc.getRecords(userId: widget.userId);
       if (!mounted) return;
       final now = DateTime.now();
+      // eatenAt is UTC from the server; compare in local tz so a 23:30 local
+      // log doesn't slip into yesterday's bucket.
       setState(() {
-        _today = all
-            .where((r) =>
-                r.eatenAt.year == now.year &&
-                r.eatenAt.month == now.month &&
-                r.eatenAt.day == now.day)
-            .toList();
+        _today = all.where((r) {
+          final l = r.eatenAt.toLocal();
+          return l.year == now.year && l.month == now.month && l.day == now.day;
+        }).toList();
       });
     } catch (_) {
       // Silent on home — no red toast.

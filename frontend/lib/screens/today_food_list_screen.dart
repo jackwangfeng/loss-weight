@@ -36,12 +36,13 @@ class _TodayFoodListScreenState extends State<TodayFoodListScreen> {
       final all = await _foodSvc.getRecords(userId: widget.userId);
       if (!mounted) return;
       final now = DateTime.now();
-      final today = all
-          .where((r) =>
-              r.eatenAt.year == now.year &&
-              r.eatenAt.month == now.month &&
-              r.eatenAt.day == now.day)
-          .toList()
+      // eatenAt is parsed as UTC (server sends RFC3339 with Z); compare in
+      // local time so a record logged at 23:30 local doesn't get bucketed
+      // into "yesterday" just because UTC has rolled over.
+      final today = all.where((r) {
+        final l = r.eatenAt.toLocal();
+        return l.year == now.year && l.month == now.month && l.day == now.day;
+      }).toList()
         ..sort((a, b) => a.eatenAt.compareTo(b.eatenAt));
       setState(() {
         _items = today;
@@ -141,10 +142,13 @@ class _TodayFoodListScreenState extends State<TodayFoodListScreen> {
                   '${r.calories.toStringAsFixed(0)} kcal · ${mealTypeLabel(l10n, r.mealType)}',
                   style: TextStyle(color: scheme.onSurfaceVariant),
                 ),
-                trailing: Text(
-                  '${r.eatenAt.hour.toString().padLeft(2, '0')}:${r.eatenAt.minute.toString().padLeft(2, '0')}',
-                  style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
-                ),
+                trailing: Builder(builder: (_) {
+                  final t = r.eatenAt.toLocal();
+                  return Text(
+                    '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}',
+                    style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                  );
+                }),
               ),
             ),
           );
